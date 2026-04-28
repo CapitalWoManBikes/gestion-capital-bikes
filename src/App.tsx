@@ -1,4 +1,11 @@
 import { useState, useEffect } from "react";
+import emailjs from '@emailjs/browser';
+
+// ─── Configuración EmailJS (cámbiala desde la interfaz o aquí) ───────────────
+const EMAILJS_SERVICE_ID  = "service_XXXXXXX";  // reemplaza después del setup
+const EMAILJS_TEMPLATE_ID = "template_XXXXXXX";
+const EMAILJS_PUBLIC_KEY  = "XXXXXXXXXXXXXXX";
+const ADMIN_EMAIL         = "capital.woman.bikes@gmail.com";
 
 // ─── Colores de marca Capital Wo-Man Bikes ───────────────────────────────────
 // Morado: #6c1f6e  |  Cyan: #5cc8e8
@@ -132,6 +139,40 @@ const CSS = `
   ::-webkit-scrollbar{width:4px;height:4px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.2);border-radius:2px;}
+
+  /* ── Barra de navegación móvil (oculta en escritorio) ── */
+  .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--paper-2);border-top:1.4px solid var(--line);z-index:200;padding:4px 0 env(safe-area-inset-bottom,0);}
+  .mobile-nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;cursor:pointer;color:var(--ink-3);font-family:var(--mono);font-size:9px;letter-spacing:.3px;text-transform:uppercase;border-top:2px solid transparent;transition:color .15s,border-color .15s;-webkit-tap-highlight-color:transparent;}
+  .mobile-nav-item.active{color:var(--accent);border-top-color:var(--accent);}
+  .mobile-nav-item span{max-width:52px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center;}
+
+  /* ── Responsive ── */
+  @media (max-width:768px){
+    .nav{display:none!important;}
+    .mobile-nav{display:flex!important;}
+    .app-layout{flex-direction:column;}
+    .content-area{padding-bottom:72px;}
+    .app-bar{padding:8px 10px;gap:8px;}
+    .app-bar-left{gap:8px;}
+    .app-bar-divider{display:none;}
+    .app-bar .chip{display:none;}
+    .section-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    .section-tab{padding:8px 12px;font-size:10px;}
+    .list-row{flex-wrap:wrap;gap:6px;}
+    .kcard{touch-action:manipulation;}
+    .task-item{padding:10px 10px;}
+    .cal-day{min-width:100px;}
+    .text-3xl{font-size:24px;}
+    .text-2xl{font-size:20px;}
+    .text-xl{font-size:18px;}
+    /* Modales a pantalla completa en móvil */
+    [style*="position:fixed"],[style*="position: fixed"]{padding:8px!important;}
+    .phone{width:100%;max-width:280px;}
+  }
+  @media (max-width:480px){
+    .app-bar .action{display:none;}
+    .nav-section span:last-child{display:none;}
+  }
 `;
 
 // ─── Equipo (datos iniciales — la lista real vive en App state) ──────────────
@@ -1364,14 +1405,95 @@ const DASH_TABS = [
   { id: "mapa", label: "D · Mapa" },
 ];
 
-const ADMIN_PASSWORD = "capital2024";
+const STORED_PASSWORD_KEY = "cwb_admin_pwd";
+const getAdminPassword = () => localStorage.getItem(STORED_PASSWORD_KEY) || "capital2024";
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<"request" | "verify" | "newpwd">("request");
+  const [generatedCode, setGeneratedCode] = useState("");
+  const [enteredCode, setEnteredCode] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const sendCode = async () => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedCode(code);
+    setLoading(true);
+    setMsg("");
+    try {
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        { to_email: ADMIN_EMAIL, code, app_name: "Capital Wo-Man Bikes" },
+        EMAILJS_PUBLIC_KEY
+      );
+      setStep("verify");
+      setMsg("Código enviado a tu correo.");
+    } catch {
+      setMsg("Error al enviar el correo. Verifica la configuración de EmailJS.");
+    }
+    setLoading(false);
+  };
+
+  const verifyCode = () => {
+    if (enteredCode === generatedCode) {
+      setStep("newpwd");
+      setMsg("");
+    } else {
+      setMsg("Código incorrecto. Inténtalo de nuevo.");
+    }
+  };
+
+  const savePassword = () => {
+    if (newPwd.length < 6) { setMsg("La contraseña debe tener al menos 6 caracteres."); return; }
+    if (newPwd !== confirmPwd) { setMsg("Las contraseñas no coinciden."); return; }
+    localStorage.setItem(STORED_PASSWORD_KEY, newPwd);
+    setMsg("¡Contraseña cambiada con éxito!");
+    setTimeout(onClose, 1500);
+  };
+
+  const inp: React.CSSProperties = { width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #4a2a4a", background: "#2d1a2d", color: "#e8d5e8", fontSize: 14, marginBottom: 8, boxSizing: "border-box" };
+  const btn: React.CSSProperties = { width: "100%", padding: "10px 0", borderRadius: 8, background: "#6c1f6e", color: "#fff", border: "none", fontFamily: "monospace", fontSize: 13, letterSpacing: 1, cursor: "pointer", marginTop: 4 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#0008", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#221222", borderRadius: 16, padding: 32, width: "100%", maxWidth: 340, textAlign: "center", boxShadow: "0 4px 32px #0008" }}>
+        <div style={{ color: "#c8a8c8", fontFamily: "monospace", fontSize: 12, letterSpacing: 2, marginBottom: 20 }}>CAMBIAR CONTRASEÑA</div>
+
+        {step === "request" && <>
+          <p style={{ color: "#c8a8c8", fontSize: 13, marginBottom: 16 }}>Te enviaremos un código de seguridad a <strong style={{ color: "#e8d5e8" }}>{ADMIN_EMAIL}</strong></p>
+          <button onClick={sendCode} disabled={loading} style={btn}>{loading ? "Enviando..." : "ENVIAR CÓDIGO"}</button>
+        </>}
+
+        {step === "verify" && <>
+          <p style={{ color: "#c8a8c8", fontSize: 13, marginBottom: 12 }}>Ingresa el código de 6 dígitos que llegó a tu correo:</p>
+          <input style={inp} type="text" maxLength={6} placeholder="000000" value={enteredCode} onChange={e => setEnteredCode(e.target.value)} autoFocus />
+          <button onClick={verifyCode} style={btn}>VERIFICAR</button>
+          <button onClick={sendCode} disabled={loading} style={{ ...btn, background: "none", border: "1px solid #4a2a4a", color: "#c8a8c8", marginTop: 8 }}>Reenviar código</button>
+        </>}
+
+        {step === "newpwd" && <>
+          <input style={inp} type="password" placeholder="Nueva contraseña (mín. 6 caracteres)" value={newPwd} onChange={e => setNewPwd(e.target.value)} autoFocus />
+          <input style={inp} type="password" placeholder="Confirmar contraseña" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} />
+          <button onClick={savePassword} style={btn}>GUARDAR CONTRASEÑA</button>
+        </>}
+
+        {msg && <div style={{ color: msg.includes("éxito") ? "#5cc8e8" : "#e05555", fontSize: 12, marginTop: 10 }}>{msg}</div>}
+        <button onClick={onClose} style={{ marginTop: 14, background: "none", border: "none", color: "#6a4a6a", fontSize: 12, cursor: "pointer", fontFamily: "monospace" }}>cancelar</button>
+      </div>
+    </div>
+  );
+}
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [pwd, setPwd] = useState("");
   const [error, setError] = useState(false);
+  const [showChangePwd, setShowChangePwd] = useState(false);
 
   const handleLogin = () => {
-    if (pwd === ADMIN_PASSWORD) {
+    if (pwd === getAdminPassword()) {
       sessionStorage.setItem("cwb_admin", "1");
       onLogin();
     } else {
@@ -1381,9 +1503,9 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#1a0d1a" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#1a0d1a", padding: 16 }}>
       <style>{CSS}</style>
-      <div style={{ background: "#221222", borderRadius: 16, padding: 40, minWidth: 320, textAlign: "center", boxShadow: "0 4px 32px #0006" }}>
+      <div style={{ background: "#221222", borderRadius: 16, padding: 40, width: "100%", maxWidth: 360, textAlign: "center", boxShadow: "0 4px 32px #0006" }}>
         <Logo height={48} />
         <div style={{ marginTop: 24, marginBottom: 16, color: "#c8a8c8", fontFamily: "monospace", fontSize: 12, letterSpacing: 3 }}>ACCESO ADMINISTRACIÓN</div>
         <input
@@ -1402,7 +1524,14 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         >
           ENTRAR
         </button>
+        <button
+          onClick={() => setShowChangePwd(true)}
+          style={{ marginTop: 16, background: "none", border: "none", color: "#6a4a6a", fontSize: 12, cursor: "pointer", fontFamily: "monospace", textDecoration: "underline" }}
+        >
+          Cambiar contraseña
+        </button>
       </div>
+      {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
     </div>
   );
 }
@@ -1545,6 +1674,16 @@ export default function App() {
           </div>
         </div>
       </div>
+      {/* Barra de navegación móvil */}
+      <nav className="mobile-nav">
+        {NAV.map(item => (
+          <div key={item.id} className={"mobile-nav-item" + (section === item.id ? " active" : "")} onClick={() => setSection(item.id)}>
+            <Icon d={I[item.icon]} size={20} />
+            <span>{item.label.split(" ")[0]}</span>
+          </div>
+        ))}
+      </nav>
+
       {showModal && <MemberModal onClose={() => setShowModal(false)} onAdd={addMember} />}
     </>
   );
