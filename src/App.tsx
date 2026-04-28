@@ -836,7 +836,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
                   <Icon d={I.chev} size={16} />
                 </div>
                 <hr className="sk-hr dashed" />
-                <div className="sk-mono text-xs muted">avisa a Marta · 30 min</div>
+                <div className="sk-mono text-xs muted">avisa a Julieth · 30 min</div>
               </div>
               <div style={{ marginTop: "auto" }} className="w-full">
                 <div className="sk-mono text-xs tracked muted">TAREAS HOY</div>
@@ -1068,7 +1068,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                   <div className="sk-box ink" style={{ width: "100%", padding: 18, marginTop: 12, textAlign: "center" }}>
                     <div className="sk-mono text-xs tracked" style={{ opacity: .9, color: "var(--paper)" }}>FICHAR SALIDA</div>
                     <div className="sk-title text-3xl" style={{ color: "var(--paper)", lineHeight: 1, margin: "6px 0" }}>⬊ SALIR</div>
-                    <div className="sk-mono text-xs" style={{ opacity: .7, color: "var(--paper)" }}>Marta recibirá el resumen</div>
+                    <div className="sk-mono text-xs" style={{ opacity: .7, color: "var(--paper)" }}>Julieth recibirá el resumen</div>
                   </div>
                   <div style={{ marginTop: "auto" }} className="sk-mono text-xs muted text-center">¡Buen trabajo hoy! 👋</div>
                 </div>
@@ -2040,7 +2040,7 @@ export default function App() {
             <div className="nav-item">
               <Av p={{ initials: "M" }} size="xs" />
               <div className="stack" style={{ gap: 0 }}>
-                <span style={{ fontSize: 13 }}>Marta</span>
+                <span style={{ fontSize: 13 }}>Julieth</span>
                 <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>jefa</span>
               </div>
             </div>
