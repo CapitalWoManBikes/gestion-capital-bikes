@@ -1364,7 +1364,51 @@ const DASH_TABS = [
   { id: "mapa", label: "D · Mapa" },
 ];
 
+const ADMIN_PASSWORD = "capital2024";
+
+function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [pwd, setPwd] = useState("");
+  const [error, setError] = useState(false);
+
+  const handleLogin = () => {
+    if (pwd === ADMIN_PASSWORD) {
+      sessionStorage.setItem("cwb_admin", "1");
+      onLogin();
+    } else {
+      setError(true);
+      setPwd("");
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#1a0d1a" }}>
+      <style>{CSS}</style>
+      <div style={{ background: "#221222", borderRadius: 16, padding: 40, minWidth: 320, textAlign: "center", boxShadow: "0 4px 32px #0006" }}>
+        <Logo height={48} />
+        <div style={{ marginTop: 24, marginBottom: 16, color: "#c8a8c8", fontFamily: "monospace", fontSize: 12, letterSpacing: 3 }}>ACCESO ADMINISTRACIÓN</div>
+        <input
+          type="password"
+          value={pwd}
+          onChange={e => { setPwd(e.target.value); setError(false); }}
+          onKeyDown={e => e.key === "Enter" && handleLogin()}
+          placeholder="Contraseña"
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: error ? "1px solid #e05555" : "1px solid #4a2a4a", background: "#2d1a2d", color: "#e8d5e8", fontSize: 14, marginBottom: 8, boxSizing: "border-box" as const }}
+          autoFocus
+        />
+        {error && <div style={{ color: "#e05555", fontSize: 12, marginBottom: 8 }}>Contraseña incorrecta</div>}
+        <button
+          onClick={handleLogin}
+          style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: "#6c1f6e", color: "#fff", border: "none", fontFamily: "monospace", fontSize: 13, letterSpacing: 1, cursor: "pointer", marginTop: 4 }}
+        >
+          ENTRAR
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => sessionStorage.getItem("cwb_admin") === "1");
   const [section, setSection] = useState("dash");
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
@@ -1393,6 +1437,8 @@ export default function App() {
 
   const titles = { dash: "Mi equipo", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
   const breadcrumbs = { dash: "HOY · MAR 21 ABR", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "SEMANA 21–27 ABR", cal: "SEMANA 21–27 ABR", ops: "PLANTILLAS" };
+
+  if (!isLoggedIn) return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
 
   return (
     <>
