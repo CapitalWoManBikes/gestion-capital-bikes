@@ -2069,12 +2069,15 @@ function AppointmentModal({ team, initialDate, onAdd, onClose }: { team: any[]; 
 }
 
 // ─── Dashboard del colaborador ────────────────────────────────────────────────
-function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout, extendedData = {} }: {
+function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout, extendedData = {}, setTasks, setAppointments, onNewBikeService }: {
   session: Session; team: any[]; shift: any; setShift: any;
   tasks: AppTask[]; onToggleTask: (id: string) => void;
   appointments: Appointment[]; onNewAppointment: () => void;
   services: BikeService[]; onNewService: () => void; onAdvancePhase: (id: string) => void; onLogout: () => void;
   extendedData?: any;
+  setTasks?: (fn: (prev: AppTask[]) => AppTask[]) => void;
+  setAppointments?: (fn: (prev: Appointment[]) => Appointment[]) => void;
+  onNewBikeService?: (date: string) => void;
 }) {
   const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
   const todayStr = _fmtDate(new Date());
@@ -2091,6 +2094,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   const perms = extData.permissions || { ...DEFAULT_PERMISSIONS };
   const phName = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
   const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
+  const [tab, setTab] = useState<"inicio" | "calendario">("inicio");
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column" }}>
@@ -2107,7 +2111,30 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
         <button className="action" style={{ fontSize: 12 }} onClick={onLogout}>Salir</button>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 80px", maxWidth: 640, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
+      {/* Pestañas */}
+      <div style={{ display: "flex", borderBottom: "1.4px solid var(--line)", background: "var(--paper-2)", flexShrink: 0 }}>
+        {(["inicio", "calendario"] as const).map(t => (
+          <div key={t} onClick={() => setTab(t)}
+            style={{ padding: "11px 22px", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase" as const, cursor: "pointer", borderBottom: `2px solid ${tab === t ? "var(--accent)" : "transparent"}`, color: tab === t ? "var(--accent)" : "var(--ink-3)", transition: "color .15s, border-color .15s", WebkitTapHighlightColor: "transparent" }}
+          >
+            {t === "inicio" ? "🏠 Inicio" : "📅 Calendario"}
+          </div>
+        ))}
+      </div>
+
+      {tab === "calendario" && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <CalendarSection
+            tasks={tasks} appointments={appointments} services={services}
+            setTasks={setTasks ?? ((_fn: any) => {})}
+            setAppointments={setAppointments ?? ((_fn: any) => {})}
+            onNewBikeService={onNewBikeService ?? (() => {})}
+            team={team}
+          />
+        </div>
+      )}
+
+      {tab === "inicio" && <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 80px", maxWidth: 640, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
         {/* Turno */}
         <div style={{ background: isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `2px solid ${isIn ? "var(--accent)" : "var(--line)"}`, borderStyle: isIn ? "solid" : "dashed", borderRadius: 14, padding: 22, textAlign: "center", marginBottom: 18 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>{isIn ? "🟢" : "⚪"}</div>
@@ -2264,7 +2291,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
             );
           })}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -2577,6 +2604,9 @@ export default function App() {
         services={services} onNewService={() => { setServiceModalDate(undefined); setShowNewService(true); }}
         onAdvancePhase={advancePhase}
         onLogout={logout}
+        setTasks={fn => setTasks(fn)}
+        setAppointments={fn => setAppointments(fn)}
+        onNewBikeService={date => { setServiceModalDate(date); setShowNewService(true); }}
       />
       {showApptModal && (
         <AppointmentModal team={team} initialDate={_fmtDate(new Date())}
