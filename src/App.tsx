@@ -1895,11 +1895,22 @@ export default function App() {
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
   const [shift, setShift] = useState({ s: false, c: false });
-  const [team, setTeam] = useState(INITIAL_TEAM);
+  const [team, setTeam] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("cwb_team") || "null") || INITIAL_TEAM; } catch { return INITIAL_TEAM; }
+  });
   const [showModal, setShowModal] = useState(false);
-  const [extendedData, setExtendedData] = useState({
-    s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40" },
-    c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40" },
+  const [extendedData, setExtendedData] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("cwb_ext") || "null") || {
+        s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
+        c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
+      };
+    } catch {
+      return {
+        s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
+        c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
+      };
+    }
   });
 
   const addMember = ({ name, role, initials }) => {
@@ -1928,6 +1939,13 @@ export default function App() {
 
   useEffect(() => { localStorage.setItem("cwb_services", JSON.stringify(services)); }, [services]);
   useEffect(() => { localStorage.setItem("cwb_tasks", JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem("cwb_team", JSON.stringify(team)); }, [team]);
+  useEffect(() => {
+    localStorage.setItem("cwb_ext", JSON.stringify(extendedData));
+    // Rebuild PIN cache whenever extendedData changes
+    const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
+    localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
+  }, [extendedData, team]);
 
   const addService   = (s: BikeService) => setServices(prev => [s, ...prev]);
   const advancePhase = (id: string) => setServices(prev => prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s));
