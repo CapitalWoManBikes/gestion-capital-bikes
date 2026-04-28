@@ -23,6 +23,7 @@ interface BikeService {
   createdAt: string; notes: string;
   startTime?: string; endTime?: string; technicianId?: string;
   paymentStatus?: "pendiente" | "pagado" | "adelanto";
+  paymentAmount?: number;
   deliveryStatus?: "en_taller" | "lista" | "entregada";
 }
 interface AppTask {
@@ -1412,6 +1413,8 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
                     <div style={{ fontSize: 10, color: "#6c1f6e" }}>{s.bikeDescription}</div>
                     <div style={{ fontSize: 10, color: "#9c4a9e" }}>{s.phase === 0 ? "📋 Recibida" : `${phInfo?.icon} ${phInfo?.name}`}</div>
                     {tech && <div style={{ fontSize: 10, color: "#9c4a9e" }}>🔧 {tech.name}</div>}
+                    {s.paymentStatus === "pagado" && <div style={{ fontSize: 10, color: "#2e7d32" }}>✅ Pagado</div>}
+                    {s.paymentStatus === "adelanto" && <div style={{ fontSize: 10, color: "#6c1f6e" }}>📤 {s.paymentAmount ? `$${s.paymentAmount.toLocaleString()}` : "Abono"}</div>}
                   </div>
                 );
               })}
@@ -1676,6 +1679,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:30");
   const [paymentStatus, setPaymentStatus] = useState<"pendiente" | "pagado" | "adelanto">("pendiente");
+  const [paymentAmount, setPaymentAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
   const lbl: React.CSSProperties = { fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 4 };
@@ -1690,7 +1694,9 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
       createdAt: new Date().toISOString(), notes,
       startTime, endTime,
       technicianId: technicianId || undefined,
-      paymentStatus, deliveryStatus: "en_taller",
+      paymentStatus,
+      paymentAmount: paymentStatus === "adelanto" ? (parseFloat(paymentAmount) || 0) : undefined,
+      deliveryStatus: "en_taller",
     };
     onAdd(newService);
     const trackingLink = buildTrackingUrl(newService);
@@ -1745,13 +1751,19 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
           </div>
         </div>
         <label style={lbl}>Estado de pago</label>
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: paymentStatus === "adelanto" ? 8 : 10 }}>
           {(["pendiente", "adelanto", "pagado"] as const).map(p => (
             <button key={p} className={"action" + (paymentStatus === p ? " accent" : "")} style={{ fontSize: 12, flex: 1, padding: "6px 4px" }} onClick={() => setPaymentStatus(p)}>
               {p === "pendiente" ? "💰 Pendiente" : p === "adelanto" ? "📤 Adelanto" : "✅ Pagado"}
             </button>
           ))}
         </div>
+        {paymentStatus === "adelanto" && (
+          <div style={{ marginBottom: 10 }}>
+            <label style={lbl}>Monto del abono</label>
+            <input style={inp} type="number" min="0" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0" />
+          </div>
+        )}
         <label style={lbl}>Notas (opcional)</label>
         <textarea style={{ ...inp, resize: "vertical" as const, minHeight: 60 }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Cambio de frenos, ajuste de cambios..." />
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -1767,6 +1779,12 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
 function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateService = () => {}, team = [] }: { services: BikeService[]; onAdvancePhase: (id: string) => void; onNewService: () => void; onUpdateService?: (id: string, changes: Partial<BikeService>) => void; team?: any[] }) {
   const [sending, setSending] = useState<string | null>(null);
   const [copied, setCopied]   = useState<string | null>(null);
+  const [editingAmounts, setEditingAmounts] = useState<Record<string, string>>({});
+  const fmtPago = (s: BikeService) => {
+    if (s.paymentStatus === "pagado") return "✅ Pagado";
+    if (s.paymentStatus === "adelanto") return s.paymentAmount ? `📤 Abono: $${s.paymentAmount.toLocaleString()}` : "📤 Adelanto (sin monto)";
+    return "💰 Pago pendiente";
+  };
 
   const notifyClient = async (s: BikeService) => {
     const ph = PHASES.find(p => p.id === s.phase);
@@ -1848,22 +1866,43 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
             </button>
           </div>
           {s.notes && <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>📝 {s.notes}</div>}
-          <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
-            <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginRight: 2 }}>PAGO:</span>
-            {(["pendiente", "adelanto", "pagado"] as const).map(p => (
-              <button key={p} onClick={() => onUpdateService(s.id, { paymentStatus: p })}
-                style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: `1.3px solid ${(s.paymentStatus || "pendiente") === p ? "#6c1f6e" : "var(--line)"}`, background: (s.paymentStatus || "pendiente") === p ? "rgba(108,31,110,.1)" : "transparent", color: (s.paymentStatus || "pendiente") === p ? "#6c1f6e" : "var(--ink-3)", cursor: "pointer", fontFamily: "inherit" }}>
-                {p === "pendiente" ? "Pendiente" : p === "adelanto" ? "Adelanto" : "Pagado"}
-              </button>
-            ))}
-            <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>
-              {s.deliveryStatus === "entregada" ? "🏠 Entregada" : s.phase === 4 ? "✅ Lista" : "🔧 En taller"}
-            </span>
-            {s.phase === 4 && s.deliveryStatus !== "entregada" && (
-              <button onClick={() => onUpdateService(s.id, { deliveryStatus: "entregada" })}
-                style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: "1.3px solid #4caf50", background: "rgba(76,175,80,.1)", color: "#2e7d32", cursor: "pointer", fontFamily: "inherit" }}>
-                Marcar entregada
-              </button>
+          <div style={{ marginTop: 10, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: s.paymentStatus === "adelanto" ? 8 : 0 }}>
+              <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginRight: 2 }}>PAGO:</span>
+              {(["pendiente", "adelanto", "pagado"] as const).map(p => (
+                <button key={p} onClick={() => onUpdateService(s.id, { paymentStatus: p })}
+                  style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: `1.3px solid ${(s.paymentStatus || "pendiente") === p ? "#6c1f6e" : "var(--line)"}`, background: (s.paymentStatus || "pendiente") === p ? "rgba(108,31,110,.1)" : "transparent", color: (s.paymentStatus || "pendiente") === p ? "#6c1f6e" : "var(--ink-3)", cursor: "pointer", fontFamily: "inherit" }}>
+                  {p === "pendiente" ? "Pendiente" : p === "adelanto" ? "Adelanto" : "Pagado"}
+                </button>
+              ))}
+              <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>
+                {s.deliveryStatus === "entregada" ? "🏠 Entregada" : s.phase === 4 ? "✅ Lista" : "🔧 En taller"}
+              </span>
+              {s.phase === 4 && s.deliveryStatus !== "entregada" && (
+                <button onClick={() => onUpdateService(s.id, { deliveryStatus: "entregada" })}
+                  style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: "1.3px solid #4caf50", background: "rgba(76,175,80,.1)", color: "#2e7d32", cursor: "pointer", fontFamily: "inherit" }}>
+                  Marcar entregada
+                </button>
+              )}
+            </div>
+            {s.paymentStatus === "adelanto" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--ink-3)" }}>Monto abono:</span>
+                <input
+                  type="number" min="0"
+                  value={editingAmounts[s.id] ?? (s.paymentAmount != null ? String(s.paymentAmount) : "")}
+                  onChange={e => setEditingAmounts(prev => ({ ...prev, [s.id]: e.target.value }))}
+                  onBlur={() => {
+                    const v = parseFloat(editingAmounts[s.id] ?? String(s.paymentAmount || ""));
+                    onUpdateService(s.id, { paymentAmount: isNaN(v) ? 0 : v });
+                    setEditingAmounts(prev => { const n = { ...prev }; delete n[s.id]; return n; });
+                  }}
+                  onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  placeholder="0"
+                  style={{ width: 110, padding: "5px 10px", borderRadius: 8, border: "1.5px solid #6c1f6e", fontSize: 14, fontFamily: "inherit", background: "var(--paper)", color: "var(--ink)", outline: "none" }}
+                />
+                {s.paymentAmount ? <span style={{ fontSize: 13, color: "#6c1f6e", fontWeight: 700 }}>${s.paymentAmount.toLocaleString()}</span> : null}
+              </div>
             )}
           </div>
         </div>
@@ -2130,6 +2169,9 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
                   <div style={{ marginTop: 6, fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>
                     {s.phase === 0 ? "📋 Recibida" : `${PHASES.find(ph => ph.id === s.phase)?.icon} ${phName(s.phase)}`}
                   </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: s.paymentStatus === "pagado" ? "#2e7d32" : s.paymentStatus === "adelanto" ? "#6c1f6e" : "var(--ink-3)" }}>
+                    {s.paymentStatus === "pagado" ? "✅ Pagado" : s.paymentStatus === "adelanto" ? `📤 Abono: $${(s.paymentAmount || 0).toLocaleString()}` : "💰 Pago pendiente"}
+                  </div>
                   {s.notes && <div style={{ marginTop: 4, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>"{s.notes}"</div>}
                 </div>
               ))}
@@ -2202,6 +2244,9 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
                 <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
                 <div style={{ marginTop: 8, display: "flex", gap: 4, marginBottom: 8 }}>
                   {PHASES.map(ph => <div key={ph.id} style={{ flex: 1, height: 5, borderRadius: 3, background: s.phase >= ph.id ? ph.color : "var(--line)", transition: "background .3s" }} />)}
+                </div>
+                <div style={{ fontSize: 11, color: s.paymentStatus === "pagado" ? "#2e7d32" : s.paymentStatus === "adelanto" ? "#6c1f6e" : "var(--ink-3)", marginBottom: 6 }}>
+                  {s.paymentStatus === "pagado" ? "✅ Pagado" : s.paymentStatus === "adelanto" ? `📤 Abono: $${(s.paymentAmount || 0).toLocaleString()}` : "💰 Pago pendiente"}
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>{s.phase === 0 ? "📋 Recibida" : `${PHASES.find(ph => ph.id === s.phase)?.icon} ${phName(s.phase)}`}</div>
