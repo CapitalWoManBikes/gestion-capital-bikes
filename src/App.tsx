@@ -180,27 +180,29 @@ const CSS = `
     .nav{display:none!important;}
     .mobile-nav{display:flex!important;}
     .app-layout{flex-direction:column;}
-    .content-area{padding-bottom:72px;}
-    .app-bar{padding:8px 10px;gap:8px;}
+    .content-area{padding-bottom:80px;}
+    .app-bar{padding:8px 12px;gap:8px;}
     .app-bar-left{gap:8px;}
     .app-bar-divider{display:none;}
     .app-bar .chip{display:none;}
-    .section-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-    .section-tab{padding:8px 12px;font-size:10px;}
+    .section-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+    .section-tabs::-webkit-scrollbar{display:none;}
+    .section-tab{padding:10px 14px;font-size:10px;flex-shrink:0;}
     .list-row{flex-wrap:wrap;gap:6px;}
     .kcard{touch-action:manipulation;}
-    .task-item{padding:10px 10px;}
-    .cal-day{min-width:100px;}
-    .text-3xl{font-size:24px;}
-    .text-2xl{font-size:20px;}
-    .text-xl{font-size:18px;}
-    /* Modales a pantalla completa en móvil */
-    [style*="position:fixed"],[style*="position: fixed"]{padding:8px!important;}
-    .phone{width:100%;max-width:280px;}
+    .task-item{padding:12px 10px;}
+    .cal-day{min-width:120px;}
+    .text-3xl{font-size:22px;}
+    .text-2xl{font-size:18px;}
+    .text-xl{font-size:16px;}
+    .phone{width:100%;max-width:260px;}
+    button.action{min-height:36px;}
+    .mobile-nav-item{padding:8px 2px;}
   }
   @media (max-width:480px){
     .app-bar .action{display:none;}
     .nav-section span:last-child{display:none;}
+    button.action{min-height:40px;}
   }
 `;
 
@@ -218,8 +220,8 @@ function MemberModal({ onClose, onAdd }) {
   const initials = name.trim().split(" ").map(w => w[0] || "").join("").toUpperCase().slice(0, 2);
   const canAdd = name.trim().length > 0 && role.length > 0;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div className="sk-box p-5" style={{ width: 380, background: "var(--paper)", position: "relative" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="sk-box p-5" style={{ width: "100%", maxWidth: 380, background: "var(--paper)", position: "relative" }}>
         <div className="sk-title text-2xl" style={{ marginBottom: 16 }}>Añadir miembro</div>
         <div className="stack gap-3">
           <div>
@@ -291,8 +293,8 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
     onClose();
   };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div className="sk-box p-5" style={{ width: 440, background: "var(--paper)", maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="sk-box p-5" style={{ width: "100%", maxWidth: 440, background: "var(--paper)", maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
         {!pinOk ? (
           <>
             <div className="sk-title text-2xl" style={{ marginBottom: 4 }}>Acceso restringido</div>
@@ -1539,7 +1541,7 @@ function ServiceSection({ services, onAdvancePhase, onNewService }: { services: 
   const done    = services.filter(s => s.phase === 4);
 
   return (
-    <div style={{ padding: 20, maxWidth: 700, margin: "0 auto" }}>
+    <div style={{ padding: "16px 16px", maxWidth: 700, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Servicios de bicicletas</div>
@@ -1670,7 +1672,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
         <button className="action" style={{ fontSize: 12 }} onClick={onLogout}>Salir</button>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 20, maxWidth: 600, margin: "0 auto", width: "100%" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 24px", maxWidth: 600, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
         {/* Turno */}
         <div style={{ background: isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `1.4px solid ${isIn ? "var(--accent)" : "var(--line)"}`, borderRadius: 14, padding: 20, textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>{isIn ? "🟢" : "⚪"}</div>
