@@ -1926,11 +1926,11 @@ function AppointmentModal({ team, initialDate, onAdd, onClose }: { team: any[]; 
 }
 
 // ─── Dashboard del colaborador ────────────────────────────────────────────────
-function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onLogout }: {
+function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout }: {
   session: Session; team: any[]; shift: any; setShift: any;
   tasks: AppTask[]; onToggleTask: (id: string) => void;
   appointments: Appointment[]; onNewAppointment: () => void;
-  services: BikeService[]; onNewService: () => void; onLogout: () => void;
+  services: BikeService[]; onNewService: () => void; onAdvancePhase: (id: string) => void; onLogout: () => void;
 }) {
   const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
   const todayStr = _fmtDate(new Date());
@@ -2049,24 +2049,37 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
         </div>
 
         {/* Servicios activos (seguimiento de fases) */}
-        {services.filter(s => s.phase < 4).length > 0 && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Bicis en taller</div>
-              <button className="action ink" style={{ fontSize: 12 }} onClick={onNewService}>+ Registrar bici</button>
-            </div>
-            {services.filter(s => s.phase < 4).map(s => (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Bicis en taller</div>
+            <button className="action ink" style={{ fontSize: 12 }} onClick={onNewService}>+ Registrar bici</button>
+          </div>
+          {services.filter(s => s.phase < 4).length === 0 ? (
+            <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No hay bicis en taller ahora.</div>
+          ) : services.filter(s => s.phase < 4).map(s => {
+            const nextPhase = PHASES.find(ph => ph.id === s.phase + 1);
+            return (
               <div key={s.id} style={{ background: "var(--paper-2)", border: "1.3px solid var(--line)", borderRadius: 10, padding: 14, marginBottom: 8 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{s.clientName}</div>
                 <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
-                <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
-                  {PHASES.map(ph => <div key={ph.id} style={{ flex: 1, height: 4, borderRadius: 2, background: s.phase >= ph.id ? ph.color : "var(--line)" }} />)}
+                <div style={{ marginTop: 8, display: "flex", gap: 4, marginBottom: 8 }}>
+                  {PHASES.map(ph => <div key={ph.id} style={{ flex: 1, height: 5, borderRadius: 3, background: s.phase >= ph.id ? ph.color : "var(--line)", transition: "background .3s" }} />)}
                 </div>
-                <div style={{ marginTop: 6, fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>{phName(s.phase)}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>{s.phase === 0 ? "📋 Recibida" : `${PHASES.find(ph => ph.id === s.phase)?.icon} ${phName(s.phase)}`}</div>
+                  {nextPhase && (
+                    <button
+                      onClick={() => onAdvancePhase(s.id)}
+                      style={{ fontSize: 12, padding: "5px 12px", borderRadius: 999, background: nextPhase.color, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
+                    >
+                      {nextPhase.icon} → {nextPhase.name}
+                    </button>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -2372,6 +2385,7 @@ export default function App() {
         tasks={tasks} onToggleTask={toggleTask}
         appointments={appointments} onNewAppointment={() => setShowApptModal(true)}
         services={services} onNewService={() => setShowNewService(true)}
+        onAdvancePhase={advancePhase}
         onLogout={logout}
       />
       {showApptModal && (
