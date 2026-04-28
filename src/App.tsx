@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import emailjs from '@emailjs/browser';
 
 // ─── Configuración EmailJS (cámbiala desde la interfaz o aquí) ───────────────
-const EMAILJS_SERVICE_ID  = "service_XXXXXXX";  // reemplaza después del setup
-const EMAILJS_TEMPLATE_ID = "template_XXXXXXX";
-const EMAILJS_PUBLIC_KEY  = "XXXXXXXXXXXXXXX";
+const EMAILJS_SERVICE_ID  = "service_dzchw0a";
+const EMAILJS_TEMPLATE_ID = "2ux0vlp";
+const EMAILJS_PUBLIC_KEY  = "UgKvCtUeZVka8ji8t";
 const ADMIN_EMAIL         = "capital.woman.bikes@gmail.com";
 
 // ─── Colores de marca Capital Wo-Man Bikes ───────────────────────────────────
@@ -1426,7 +1426,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       await emailjs.send(
         EMAILJS_SERVICE_ID,
         EMAILJS_TEMPLATE_ID,
-        { to_email: ADMIN_EMAIL, code, app_name: "Capital Wo-Man Bikes" },
+        { email: ADMIN_EMAIL, code, app_name: "Capital Wo-Man Bikes" },
         EMAILJS_PUBLIC_KEY
       );
       setStep("verify");
