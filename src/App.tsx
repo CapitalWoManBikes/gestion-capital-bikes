@@ -2659,7 +2659,7 @@ export default function App() {
             {section === "dash" && <>
               <span className="chip"><span className="dot g" />{[shift.s, shift.c].filter(Boolean).length}/2 en turno</span>
               {lunch && shift.s && <span className="chip lunch"><span className="dot" style={{ background: "#fff" }} />1 almuerzo</span>}
-              <button className="action ink"><Icon d={I.plus} size={14} /> Añadir tarea</button>
+              <button className="action ink" onClick={() => setShowAssignTask(true)}><Icon d={I.plus} size={14} /> Añadir tarea</button>
             </>}
             {section === "tareas" && (
               <span className="sk-mono text-xs muted">
