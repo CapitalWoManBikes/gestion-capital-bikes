@@ -2322,7 +2322,29 @@ export default function App() {
   }, [extendedData, team]);
 
   const addService      = (s: BikeService) => setServices(prev => [s, ...prev]);
-  const advancePhase    = (id: string) => setServices(prev => prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s));
+  const advancePhase = (id: string) => {
+    setServices(prev => {
+      const updated = prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s);
+      // Auto-email cuando llega a "Lista para recoger" (fase 4)
+      const svc = updated.find(s => s.id === id);
+      if (svc && svc.phase === 4) {
+        const ph = PHASES.find(p => p.id === 4)!;
+        emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
+          email: svc.clientEmail,
+          client_email: svc.clientEmail,
+          client_name: svc.clientName,
+          bike_description: svc.bikeDescription,
+          phase_name: ph.name,
+          phase_icon: ph.icon,
+          phase_message: ph.msg,
+          tracking_link: buildTrackingUrl(svc),
+        }, EMAILJS_PUBLIC_KEY).catch((err: any) => {
+          alert(`❌ No se pudo enviar el email al cliente.\n\nDetalle: ${err?.text || err?.message || err}`);
+        });
+      }
+      return updated;
+    });
+  };
   const addTask         = (t: AppTask) => setTasks(prev => [t, ...prev]);
   const toggleTask      = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
   const addAppointment  = (a: Appointment) => setAppointments(prev => [a, ...prev]);
