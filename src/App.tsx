@@ -4,7 +4,7 @@ import emailjs from '@emailjs/browser';
 // ─── Configuración EmailJS (cámbiala desde la interfaz o aquí) ───────────────
 const EMAILJS_SERVICE_ID          = "service_dzchw0a";
 const EMAILJS_TEMPLATE_ID         = "2ux0vlp";
-const EMAILJS_SERVICE_TEMPLATE_ID = "template_fcgenmc";
+const EMAILJS_SERVICE_TEMPLATE_ID = "i6zd5kf";
 const EMAILJS_PUBLIC_KEY          = "UgKvCtUeZVka8ji8t";
 const ADMIN_EMAIL                 = "capital.woman.bikes@gmail.com";
 
