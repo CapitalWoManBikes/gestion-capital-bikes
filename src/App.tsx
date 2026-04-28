@@ -1627,13 +1627,33 @@ function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: B
   const [bikeDescription, setBikeDescription] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
   const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
   const lbl: React.CSSProperties = { fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 4 };
   const canAdd = clientName.trim() && clientEmail.trim() && bikeDescription.trim();
-  const handleAdd = () => {
-    if (!canAdd) return;
+  const handleAdd = async () => {
+    if (!canAdd || saving) return;
+    setSaving(true);
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    onAdd({ id, clientName: clientName.trim(), clientEmail: clientEmail.trim(), bikeDescription: bikeDescription.trim(), date, phase: 0, createdAt: new Date().toISOString(), notes });
+    const newService: BikeService = { id, clientName: clientName.trim(), clientEmail: clientEmail.trim(), bikeDescription: bikeDescription.trim(), date, phase: 0, createdAt: new Date().toISOString(), notes };
+    onAdd(newService);
+    // Email de confirmación al cliente
+    const trackingLink = buildTrackingUrl(newService);
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
+        email: newService.clientEmail,
+        client_email: newService.clientEmail,
+        client_name: newService.clientName,
+        bike_description: newService.bikeDescription,
+        phase_name: "Recibida",
+        phase_icon: "📋",
+        phase_message: "Hemos recibido tu bicicleta. Pronto comenzaremos el servicio y te notificaremos cada avance.",
+        tracking_link: trackingLink,
+      }, EMAILJS_PUBLIC_KEY);
+    } catch (err: any) {
+      console.warn("EmailJS error al crear servicio:", err?.text || err);
+    }
+    setSaving(false);
     onClose();
   };
   return (
@@ -1651,8 +1671,8 @@ function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: B
         <label style={lbl}>Notas (opcional)</label>
         <textarea style={{ ...inp, resize: "vertical" as const, minHeight: 60 }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Cambio de frenos, ajuste de cambios..." />
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
-          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!canAdd}>Crear servicio</button>
+          <button className="action" onClick={onClose} style={{ flex: 1 }} disabled={saving}>Cancelar</button>
+          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!canAdd || saving}>{saving ? "Guardando..." : "Crear servicio"}</button>
         </div>
       </div>
     </div>
@@ -1670,16 +1690,19 @@ function ServiceSection({ services, onAdvancePhase, onNewService }: { services: 
     setSending(s.id);
     try {
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
-        email: s.clientEmail, client_email: s.clientEmail,
-        client_name: s.clientName, bike_description: s.bikeDescription,
-        phase_name: ph.name, phase_icon: ph.icon, phase_message: ph.msg,
+        email: s.clientEmail,
+        client_email: s.clientEmail,
+        client_name: s.clientName,
+        bike_description: s.bikeDescription,
+        phase_name: ph.name,
+        phase_icon: ph.icon,
+        phase_message: ph.msg,
         tracking_link: buildTrackingUrl(s),
       }, EMAILJS_PUBLIC_KEY);
       alert(`✅ Email enviado a ${s.clientEmail}`);
-    } catch {
-      // Email falla silenciosamente si el template no está configurado
-      // El link de seguimiento sigue disponible para compartir manualmente
-      console.warn("EmailJS: template de servicio no configurado. Usa el link de seguimiento.");
+    } catch (err: any) {
+      const detail = err?.text || err?.message || JSON.stringify(err) || "Error desconocido";
+      alert(`❌ No se pudo enviar el email.\n\nDetalle: ${detail}\n\nVerifica el template en EmailJS (ID: ${EMAILJS_SERVICE_TEMPLATE_ID})`);
     }
     setSending(null);
   };
