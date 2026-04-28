@@ -929,16 +929,17 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
 
 // ─── SECCIÓN 2b: Turnos ───────────────────────────────────────────────────────
 function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TEAM }) {
-  const [shiftTimer, setShiftTimer] = useState({ d: 0, l: 0 });
+  const [shiftTimer, setShiftTimer] = useState<Record<string, number>>({});
   useEffect(() => {
     const id = setInterval(() => {
-      setShiftTimer(t => ({
-        s: shiftState.s ? t.s + 1 : 0,
-        c: shiftState.c ? t.c + 1 : 0,
-      }));
+      setShiftTimer(t => {
+        const next: Record<string, number> = {};
+        team.forEach(p => { next[p.id] = shiftState[p.id] ? (t[p.id] || 0) + 1 : 0; });
+        return next;
+      });
     }, 1000);
     return () => clearInterval(id);
-  }, [shiftState]);
+  }, [shiftState, team]);
   const fmtTime = s => { const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return `${h}h ${m.toString().padStart(2, "0")}m`; };
 
   return (
@@ -966,7 +967,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                     <div className="stack" style={{ gap: 0 }}>
                       <span className="text-sm" style={{ fontWeight: 700 }}>{p.name}</span>
                       <span className="sk-mono text-xs muted">
-                        {shiftState[p.id] ? (lunchState && p.id === "s" ? "almuerzo · 22m restantes" : `${fmtTime(shiftTimer[p.id])} trabajadas`) : "fuera de turno"}
+                        {shiftState[p.id] ? (lunchState && p.id === "s" ? "almuerzo" : `${fmtTime(shiftTimer[p.id] || 0)} trabajadas`) : "fuera de turno"}
                       </span>
                     </div>
                   </div>
