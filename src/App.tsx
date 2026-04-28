@@ -2078,6 +2078,8 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   setTasks?: (fn: (prev: AppTask[]) => AppTask[]) => void;
   setAppointments?: (fn: (prev: Appointment[]) => Appointment[]) => void;
   onNewBikeService?: (date: string) => void;
+  empLunch?: Record<string, boolean>;
+  setEmpLunch?: (fn: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
 }) {
   const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
   const todayStr = _fmtDate(new Date());
@@ -2090,6 +2092,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   const myUpcomingBikes = services.filter(s => s.technicianId === session.id && s.date > todayStr && s.phase < 4)
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
   const isIn = !!shift[session.id!];
+  const isLunch = !!empLunch?.[session.id!];
   const extData = (extendedData as any)[session.id!] || {};
   const perms = extData.permissions || { ...DEFAULT_PERMISSIONS };
   const phName = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
@@ -2136,18 +2139,33 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
 
       {tab === "inicio" && <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 80px", maxWidth: 640, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
         {/* Turno */}
-        <div style={{ background: isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `2px solid ${isIn ? "var(--accent)" : "var(--line)"}`, borderStyle: isIn ? "solid" : "dashed", borderRadius: 14, padding: 22, textAlign: "center", marginBottom: 18 }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>{isIn ? "🟢" : "⚪"}</div>
-          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{isIn ? "Estás en turno" : "Fuera de turno"}</div>
+        <div style={{ background: isLunch ? "#fff3e0" : isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `2px solid ${isLunch ? "#e8a020" : isIn ? "var(--accent)" : "var(--line)"}`, borderStyle: isIn ? "solid" : "dashed", borderRadius: 14, padding: 22, textAlign: "center", marginBottom: 18 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>{isLunch ? "🍽" : isIn ? "🟢" : "⚪"}</div>
+          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>
+            {isLunch ? "En almuerzo" : isIn ? "Estás en turno" : "Fuera de turno"}
+          </div>
           <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 14 }}>
-            {isIn ? "Haz clic para marcar tu salida" : "Haz clic para marcar tu entrada"}
+            {isLunch ? "Toca Terminar cuando vuelvas" : isIn ? "Toca para marcar tu salida" : "Toca para marcar tu entrada"}
           </div>
           <button
             style={{ fontSize: 14, padding: "10px 32px", borderRadius: 999, background: isIn ? "#e05555" : "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}
-            onClick={() => setShift((s: any) => ({ ...s, [session.id!]: !s[session.id!] }))}
+            onClick={() => {
+              setShift((s: any) => ({ ...s, [session.id!]: !s[session.id!] }));
+              if (isLunch) setEmpLunch?.(l => ({ ...l, [session.id!]: false }));
+            }}
           >
             {isIn ? "⬊ Salir de turno" : "⬈ Entrar al turno"}
           </button>
+          {isIn && (
+            <div style={{ marginTop: 10 }}>
+              <button
+                style={{ fontSize: 13, padding: "8px 28px", borderRadius: 999, background: isLunch ? "#e8a020" : "transparent", color: isLunch ? "#fff" : "#e8a020", border: "1.5px solid #e8a020", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
+                onClick={() => setEmpLunch?.(l => ({ ...l, [session.id!]: !isLunch }))}
+              >
+                {isLunch ? "✓ Terminar almuerzo" : "🍽 Iniciar almuerzo"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Mis tareas del día */}
@@ -2466,6 +2484,9 @@ export default function App() {
   const [showApptModal, setShowApptModal] = useState(false);
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
+  const [empLunch, setEmpLunch] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem("cwb_emp_lunch") || "null") || {}; } catch { return {}; }
+  });
   const [shift, setShift] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem("cwb_shift") || "null") || { s: false, c: false }; } catch { return { s: false, c: false }; }
   });
@@ -2542,6 +2563,10 @@ export default function App() {
     if (fbReady.current) saveShopData({ shift });
   }, [shift]);
   useEffect(() => {
+    localStorage.setItem("cwb_emp_lunch", JSON.stringify(empLunch));
+    if (fbReady.current) saveShopData({ empLunch });
+  }, [empLunch]);
+  useEffect(() => {
     localStorage.setItem("cwb_ext", JSON.stringify(extendedData));
     const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
     localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
@@ -2607,6 +2632,8 @@ export default function App() {
         setTasks={fn => setTasks(fn)}
         setAppointments={fn => setAppointments(fn)}
         onNewBikeService={date => { setServiceModalDate(date); setShowNewService(true); }}
+        empLunch={empLunch}
+        setEmpLunch={fn => setEmpLunch(fn)}
       />
       {showApptModal && (
         <AppointmentModal team={team} initialDate={_fmtDate(new Date())}
