@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import emailjs from '@emailjs/browser';
+import { saveShopData, loadShopDataOnce } from './firebase';
 
 // ─── Configuración EmailJS (cámbiala desde la interfaz o aquí) ───────────────
 const EMAILJS_SERVICE_ID          = "service_dzchw0a";
@@ -1774,6 +1775,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     if (newPwd.length < 6) { setMsg("La contraseña debe tener al menos 6 caracteres."); return; }
     if (newPwd !== confirmPwd) { setMsg("Las contraseñas no coinciden."); return; }
     localStorage.setItem(STORED_PASSWORD_KEY, newPwd);
+    saveShopData({ adminPassword: newPwd });
     setMsg("¡Contraseña cambiada con éxito!");
     setTimeout(onClose, 1500);
   };
@@ -1873,6 +1875,11 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
   );
 }
 
+const DEFAULT_EXT = {
+  s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
+  c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
+};
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => {
     try { return JSON.parse(sessionStorage.getItem("cwb_session") || "null"); } catch { return null; }
@@ -1888,24 +1895,41 @@ export default function App() {
   });
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
-  const [shift, setShift] = useState({ s: false, c: false });
+  const [shift, setShift] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem("cwb_shift") || "null") || { s: false, c: false }; } catch { return { s: false, c: false }; }
+  });
   const [team, setTeam] = useState(() => {
     try { return JSON.parse(localStorage.getItem("cwb_team") || "null") || INITIAL_TEAM; } catch { return INITIAL_TEAM; }
   });
   const [showModal, setShowModal] = useState(false);
   const [extendedData, setExtendedData] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("cwb_ext") || "null") || {
-        s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
-        c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
-      };
-    } catch {
-      return {
-        s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
-        c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
-      };
-    }
+    try { return JSON.parse(localStorage.getItem("cwb_ext") || "null") || DEFAULT_EXT; } catch { return DEFAULT_EXT; }
   });
+
+  // ── Firebase sync ─────────────────────────────────────────────────────────
+  const fbReady = useRef(false);
+
+  useEffect(() => {
+    loadShopDataOnce().then(data => {
+      if (!data) {
+        // First time — migrate existing localStorage data to Firestore
+        saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift });
+      } else {
+        // Restore from Firestore (cloud takes priority over cached localStorage)
+        if (Array.isArray(data.team) && data.team.length) setTeam(data.team);
+        if (data.extendedData && Object.keys(data.extendedData).length) setExtendedData(data.extendedData);
+        if (Array.isArray(data.services)) setServices(data.services);
+        if (Array.isArray(data.tasks)) setTasks(data.tasks);
+        if (data.shift && typeof data.shift === "object") setShift(data.shift);
+        if (data.adminPassword) localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
+        // Rebuild PIN cache
+        const extD: any = data.extendedData || {};
+        const cache = (data.team || []).map((m: any) => ({ id: m.id, name: m.name, role: m.role, pin: extD[m.id]?.pin || "" }));
+        localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
+      }
+      fbReady.current = true;
+    }).catch(() => { fbReady.current = true; });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMember = ({ name, role, initials }) => {
     const id = name.toLowerCase().replace(/\s+/g, "").slice(0, 4) + Date.now().toString().slice(-3);
@@ -1922,23 +1946,33 @@ export default function App() {
       const updated = prev.map(p => p.id === id ? { ...p, name: data.name, role: data.role, initials } : p);
       // Update employee PIN cache for login
       setExtendedData(d => {
-        const newExt = { ...d, [id]: { salario: data.salario, direccion: data.direccion, documento: data.documento, eps: data.eps, horasSemana: data.horasSemana, pin: data.pin || "" } };
-        const cache = updated.map(m => ({ id: m.id, name: m.name, role: m.role, pin: newExt[m.id]?.pin || "" }));
-        localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
-        return newExt;
+        return { ...d, [id]: { salario: data.salario, direccion: data.direccion, documento: data.documento, eps: data.eps, horasSemana: data.horasSemana, pin: data.pin || "" } };
       });
       return updated;
     });
   };
 
-  useEffect(() => { localStorage.setItem("cwb_services", JSON.stringify(services)); }, [services]);
-  useEffect(() => { localStorage.setItem("cwb_tasks", JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem("cwb_team", JSON.stringify(team)); }, [team]);
+  useEffect(() => {
+    localStorage.setItem("cwb_services", JSON.stringify(services));
+    if (fbReady.current) saveShopData({ services });
+  }, [services]);
+  useEffect(() => {
+    localStorage.setItem("cwb_tasks", JSON.stringify(tasks));
+    if (fbReady.current) saveShopData({ tasks });
+  }, [tasks]);
+  useEffect(() => {
+    localStorage.setItem("cwb_team", JSON.stringify(team));
+    if (fbReady.current) saveShopData({ team });
+  }, [team]);
+  useEffect(() => {
+    localStorage.setItem("cwb_shift", JSON.stringify(shift));
+    if (fbReady.current) saveShopData({ shift });
+  }, [shift]);
   useEffect(() => {
     localStorage.setItem("cwb_ext", JSON.stringify(extendedData));
-    // Rebuild PIN cache whenever extendedData changes
     const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
     localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
+    if (fbReady.current) saveShopData({ extendedData });
   }, [extendedData, team]);
 
   const addService   = (s: BikeService) => setServices(prev => [s, ...prev]);
