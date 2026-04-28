@@ -2325,10 +2325,9 @@ export default function App() {
   const advancePhase = (id: string) => {
     setServices(prev => {
       const updated = prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s);
-      // Auto-email cuando llega a "Lista para recoger" (fase 4)
       const svc = updated.find(s => s.id === id);
-      if (svc && svc.phase === 4) {
-        const ph = PHASES.find(p => p.id === 4)!;
+      if (svc && svc.phase > 0) {
+        const ph = PHASES.find(p => p.id === svc.phase)!;
         emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
           email: svc.clientEmail,
           client_email: svc.clientEmail,
