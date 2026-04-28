@@ -25,11 +25,35 @@ interface BikeService {
 interface AppTask {
   id: string; title: string; assignedTo: string;
   tag: string; done: boolean; createdAt: string;
+  date?: string; hasTime?: boolean; startTime?: string; endTime?: string;
+}
+interface Appointment {
+  id: string; client: string; service: string; assignedTo: string;
+  date: string; startTime: string; endTime: string; notes: string; createdAt: string;
 }
 interface Session {
   type: "admin" | "employee";
   id?: string; name?: string; role?: string;
 }
+
+// ─── Helpers de fecha ────────────────────────────────────────────────────────
+const _fmtDate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+const _addDays = (n: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return _fmtDate(d);
+};
+
+const SERVICES_CATALOG = [
+  "Puesta a punto básica", "Puesta a punto completa", "Cambio cadena",
+  "Cambio cadena + piñones", "Revisión frenos", "Revisión completa",
+  "Revisión completa e-bike", "Montaje bici nueva", "Cambio rueda", "Otro servicio",
+];
 
 function buildTrackingUrl(service: BikeService): string {
   const phase = PHASES.find(p => p.id === service.phase);
@@ -205,6 +229,33 @@ const CSS = `
     .nav-section span:last-child{display:none;}
     button.action{min-height:40px;}
   }
+
+  /* ── Calendario: tipo de evento ── */
+  .cal-event.ev-service{background:#fff9c4;border-color:#c8a800;}
+  .cal-event.ev-task{background:#dbeafe;border-color:#3b82f6;}
+  .cal-day{position:relative;}
+  .cal-add-btn{position:absolute;bottom:6px;right:6px;background:var(--ink);color:var(--paper);border:none;border-radius:999px;width:22px;height:22px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;opacity:0;transition:opacity .15s;padding:0;}
+  .cal-day:hover .cal-add-btn{opacity:.8;}
+
+  /* ── Modal general ── */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:600;padding:12px;}
+  .modal-box{background:var(--paper);border:2px solid var(--line);border-radius:18px 14px 16px 15px/15px 17px 14px 16px;padding:24px;width:440px;max-width:100%;max-height:88vh;overflow-y:auto;}
+  .field-group{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+  .field-label{font-family:var(--mono);font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--ink-3);}
+  .field-input{border:1.4px solid var(--line);border-radius:8px 6px 7px 6px/6px 8px 6px 7px;padding:8px 12px;font-family:var(--hand);font-size:13px;background:var(--paper);width:100%;outline:none;color:var(--ink);}
+  .field-input:focus{border-color:var(--accent);}
+  select.field-input{cursor:pointer;}
+  textarea.field-input{resize:vertical;min-height:56px;}
+
+  /* ── Chips de tipo ── */
+  .serv-tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;font-family:var(--mono);background:#fff9c4;border:1.2px solid #c8a800;color:#7a5500;}
+  .task-tag-b{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;font-family:var(--mono);background:#dbeafe;border:1.2px solid #3b82f6;color:#1d4ed8;}
+
+  /* ── Vista colaborador (EmployeeDashboard mejorado) ── */
+  .serv-card-emp{padding:14px;border:1.5px solid #c8a800;border-radius:12px;background:#fffdf0;margin-bottom:10px;}
+  .maint-card{padding:12px;border:1.3px dashed var(--line);border-radius:10px;background:var(--paper);cursor:pointer;transition:background .12s;}
+  .maint-card:hover{background:var(--accent-soft);}
+  @media(max-width:768px){.modal-box{padding:18px;}.field-input{font-size:15px;}}
 `;
 
 // ─── Equipo (datos iniciales — la lista real vive en App state) ──────────────
@@ -1252,40 +1303,139 @@ function TasksSection({ tasks, team, onToggle, onAssign }: { tasks: AppTask[]; t
 }
 
 // ─── SECCIÓN 5: Calendario ───────────────────────────────────────────────────
-function CalendarSection() {
-  const days = [
-    { d: "21", label: "MAR", items: [{ t: "11:00", label: "Cadena #112 · Sergio" }, { t: "14:00", label: "🥪 Sergio almuerzo", bg: "var(--lunch-soft)" }, { t: "16:00", label: "Factura #204 · Cindy" }] },
-    { d: "22", label: "MIÉ", items: [{ t: "10:00", label: "Cierre abril · Cindy", bg: "var(--paper-2)" }, { t: "11:30", label: "Pedido Shimano · D" }] },
-    { d: "23", label: "JUE", items: [{ t: "10:00", label: "1:1 Sergio · yo", bg: "var(--accent-soft)" }, { t: "15:00", label: "Curso e-bikes" }] },
-    { d: "24", label: "VIE", items: [{ t: "todo el día", label: "NÓMINA · Cindy" }, { t: "18:00", label: "Reunión semanal" }] },
-    { d: "25", label: "SÁB", items: [{ t: "—", label: "cerrado" }] },
-    { d: "26", label: "DOM", items: [{ t: "—", label: "cerrado" }] },
-    { d: "27", label: "LUN", items: [{ t: "todo el día", label: "LUIS · vacaciones", bg: "var(--accent-2-soft)" }] },
-  ];
+function CalendarSection({ tasks, appointments, setTasks, setAppointments, team }: {
+  tasks: AppTask[]; appointments: Appointment[];
+  setTasks: (fn: (prev: AppTask[]) => AppTask[]) => void;
+  setAppointments: (fn: (prev: Appointment[]) => Appointment[]) => void;
+  team: any[];
+}) {
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showApptModal, setShowApptModal] = useState(false);
+  const [preDate, setPreDate] = useState<string | undefined>(undefined);
+
+  const DAY_NAMES = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
+  const MONTH_NAMES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+  const getWeekDays = (offset: number): Date[] => {
+    const now = new Date();
+    const dow = now.getDay();
+    const mon = new Date(now);
+    mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1) + offset * 7);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(mon);
+      d.setDate(mon.getDate() + i);
+      return d;
+    });
+  };
+
+  const days = getWeekDays(weekOffset);
+  const todayStr = _fmtDate(new Date());
+  const first = days[0], last = days[6];
+  const rangeLabel = `${first.getDate()} ${MONTH_NAMES[first.getMonth()]} — ${last.getDate()} ${MONTH_NAMES[last.getMonth()]} ${last.getFullYear()}`;
+
+  const openAdd = (dateStr: string, type: "task" | "appt") => {
+    setPreDate(dateStr);
+    type === "task" ? setShowTaskModal(true) : setShowApptModal(true);
+  };
+
   return (
     <div className="fade-in" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", borderBottom: "1.4px solid var(--line)", flex: 1, overflow: "auto" }}>
-        {days.map((day, i) => (
-          <div key={i} className="cal-day">
-            <div className="sk-mono text-xs tracked muted">{day.label}</div>
-            <div className="sk-title text-2xl" style={{ lineHeight: 1, marginBottom: 8 }}>{day.d}</div>
-            {day.items.map((item, j) => (
-              <div key={j} className="cal-event" style={{ background: item.bg || "var(--paper)" }}>
-                <div className="sk-mono text-xs muted">{item.t}</div>
-                <div style={{ fontSize: 12 }}>{item.label}</div>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="row between" style={{ padding: "10px 14px", borderTop: "1.4px solid var(--line)" }}>
-        <div className="row gap-3">
-          <span className="chip lunch">almuerzos</span>
-          <span className="chip accent">1:1</span>
-          <span className="chip dash">vacaciones</span>
+      {/* Barra de controles */}
+      <div className="row between" style={{ padding: "10px 16px", borderBottom: "1.4px solid var(--line)", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
+        <div className="row gap-2">
+          <button className="action" onClick={() => setWeekOffset(w => w - 1)}>◀</button>
+          <button className="action" onClick={() => setWeekOffset(0)}>Hoy</button>
+          <button className="action" onClick={() => setWeekOffset(w => w + 1)}>▶</button>
+          <span className="sk-mono text-xs muted" style={{ marginLeft: 6 }}>{rangeLabel}</span>
         </div>
-        <span className="sk-mono text-xs muted">2/2 disponibles hoy</span>
+        <div className="row gap-2">
+          <button className="action" style={{ background: "#dbeafe", borderColor: "#3b82f6", color: "#1d4ed8" }}
+            onClick={() => openAdd(todayStr, "task")}>
+            <Icon d={I.plus} size={13} /> Tarea
+          </button>
+          <button className="action" style={{ background: "#fff9c4", borderColor: "#c8a800", color: "#7a5500" }}
+            onClick={() => openAdd(todayStr, "appt")}>
+            <Icon d={I.plus} size={13} /> Agendamiento
+          </button>
+        </div>
       </div>
+
+      {/* Grid semana */}
+      <div style={{ display: "flex", flex: 1, overflow: "auto", borderBottom: "1.4px solid var(--line)" }}>
+        {days.map((day, i) => {
+          const dateStr = _fmtDate(day);
+          const isToday = dateStr === todayStr;
+          const dayAppts = appointments.filter(a => a.date === dateStr);
+          const dayTasks = tasks.filter(t => t.date === dateStr);
+          return (
+            <div key={i} className="cal-day" style={{ background: isToday ? "rgba(108,31,110,.04)" : undefined, minHeight: 120 }}>
+              <div className="sk-mono text-xs tracked muted">{DAY_NAMES[i]}</div>
+              <div className="sk-title text-2xl" style={{ lineHeight: 1, marginBottom: 8, color: isToday ? "var(--accent)" : "var(--ink)" }}>
+                {day.getDate()}
+              </div>
+
+              {/* Agendamientos — amarillo */}
+              {dayAppts.map(a => {
+                const person = team.find(p => p.id === a.assignedTo);
+                return (
+                  <div key={a.id} className="cal-event ev-service" title={`${a.client} · ${a.service}`}>
+                    <div className="sk-mono text-xs" style={{ color: "#7a5500" }}>{a.startTime}–{a.endTime}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>{a.client}</div>
+                    <div style={{ fontSize: 10, color: "#7a5500" }}>{a.service}</div>
+                    {person && <div style={{ fontSize: 10, color: "#a07000" }}>· {person.name}</div>}
+                  </div>
+                );
+              })}
+
+              {/* Tareas — azul */}
+              {dayTasks.map(t => {
+                const person = team.find(p => p.id === t.assignedTo);
+                return (
+                  <div key={t.id} className="cal-event ev-task" style={{ opacity: t.done ? .45 : 1 }} title={t.title}>
+                    <div className="sk-mono text-xs" style={{ color: "#1d4ed8" }}>
+                      {t.hasTime ? `${t.startTime}–${t.endTime}` : "todo el día"}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</div>
+                    {person && <div style={{ fontSize: 10, color: "#3b82f6" }}>· {person.name}</div>}
+                  </div>
+                );
+              })}
+
+              {dayAppts.length === 0 && dayTasks.length === 0 && (
+                <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", marginTop: 4 }}>—</div>
+              )}
+              <button className="cal-add-btn" title="Añadir agendamiento" onClick={() => openAdd(dateStr, "appt")}>+</button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Leyenda */}
+      <div className="row between" style={{ padding: "10px 14px", flexShrink: 0 }}>
+        <div className="row gap-4" style={{ flexWrap: "wrap" }}>
+          <div className="row gap-2">
+            <div style={{ width: 12, height: 12, background: "#fff9c4", border: "1.2px solid #c8a800", borderRadius: 3, flexShrink: 0 }} />
+            <span className="sk-mono text-xs muted">Agendamientos · servicios a clientes</span>
+          </div>
+          <div className="row gap-2">
+            <div style={{ width: 12, height: 12, background: "#dbeafe", border: "1.2px solid #3b82f6", borderRadius: 3, flexShrink: 0 }} />
+            <span className="sk-mono text-xs muted">Tareas internas del equipo</span>
+          </div>
+        </div>
+        <span className="sk-mono text-xs muted">
+          {appointments.filter(a => a.date === todayStr).length} servicios · {tasks.filter(t => t.date === todayStr && !t.done).length} tareas pendientes hoy
+        </span>
+      </div>
+
+      {showTaskModal && (
+        <AssignTaskModal team={team} onClose={() => setShowTaskModal(false)}
+          onAdd={task => { setTasks(ts => [{ ...task, date: preDate || task.date }, ...ts]); }} />
+      )}
+      {showApptModal && (
+        <AppointmentModal team={team} initialDate={preDate} onClose={() => setShowApptModal(false)}
+          onAdd={appt => setAppointments(as => [appt, ...as])} />
+      )}
     </div>
   );
 }
@@ -1615,31 +1765,133 @@ function AssignTaskModal({ team, onAdd, onClose }: { team: any[]; onAdd: (t: App
   const [title, setTitle] = useState("");
   const [assignedTo, setAssignedTo] = useState(team[0]?.id || "");
   const [tag, setTag] = useState("GENERAL");
+  const [date, setDate] = useState(_addDays(0));
+  const [hasTime, setHasTime] = useState(false);
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
   const tags = ["GENERAL", "TALLER", "TIENDA", "LIMPIEZA", "CAJA", "PEDIDO"];
-  const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
-  const lbl: React.CSSProperties = { fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 4 };
   const handleAdd = () => {
     if (!title.trim() || !assignedTo) return;
-    onAdd({ id: Date.now().toString(36), title: title.trim(), assignedTo, tag, done: false, createdAt: new Date().toISOString() });
+    onAdd({ id: Date.now().toString(36), title: title.trim(), assignedTo, tag, done: false, createdAt: new Date().toISOString(), date, hasTime, startTime: hasTime ? startTime : "", endTime: hasTime ? endTime : "" });
     onClose();
   };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#0008", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "var(--paper-2)", borderRadius: 14, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 4px 32px #0006" }}>
-        <div className="sk-mono" style={{ fontSize: 12, letterSpacing: 2, color: "var(--ink-3)", marginBottom: 18 }}>ASIGNAR TAREA</div>
-        <label style={lbl}>Descripción de la tarea *</label>
-        <input style={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Lavar herramienta del taller" autoFocus />
-        <label style={lbl}>Asignar a</label>
-        <select style={{ ...inp, marginBottom: 10 }} value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
-          {team.map(m => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
-        </select>
-        <label style={lbl}>Categoría</label>
-        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, marginBottom: 16 }}>
-          {tags.map(t => <button key={t} className={"action" + (tag === t ? " accent" : "")} style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setTag(t)}>{t}</button>)}
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box">
+        <div className="row between" style={{ marginBottom: 16 }}>
+          <div className="sk-title text-xl">Nueva tarea</div>
+          <span className="task-tag-b">TAREA INTERNA</span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="field-group">
+          <div className="field-label">Descripción *</div>
+          <input className="field-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Revisar frenos bici #108" autoFocus />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="field-group">
+            <div className="field-label">Asignar a</div>
+            <select className="field-input" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+              {team.map(m => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
+            </select>
+          </div>
+          <div className="field-group">
+            <div className="field-label">Fecha</div>
+            <input className="field-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="field-group">
+          <div className="field-label">Categoría</div>
+          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+            {tags.map(t => <button key={t} className={"action" + (tag === t ? " accent" : "")} style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setTag(t)}>{t}</button>)}
+          </div>
+        </div>
+        <div style={{ padding: "10px 0", marginTop: 4, borderTop: "1.2px dashed var(--line)", borderBottom: "1.2px dashed var(--line)", marginBottom: 10 }}>
+          <label className="row gap-3" style={{ cursor: "pointer" }}>
+            <input type="checkbox" checked={hasTime} onChange={e => setHasTime(e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+            <span className="text-sm">Tiene hora específica</span>
+            <span className="sk-mono text-xs muted">(si no, aparece como "todo el día")</span>
+          </label>
+        </div>
+        {hasTime && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="field-group">
+              <div className="field-label">Hora inicio</div>
+              <input className="field-input" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+            </div>
+            <div className="field-group">
+              <div className="field-label">Hora fin</div>
+              <input className="field-input" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <div className="row gap-3" style={{ marginTop: 16 }}>
           <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
-          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!title.trim()}>Asignar tarea</button>
+          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!title.trim()}>+ Añadir tarea</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppointmentModal({ team, initialDate, onAdd, onClose }: { team: any[]; initialDate?: string; onAdd: (a: Appointment) => void; onClose: () => void }) {
+  const [client, setClient] = useState("");
+  const [service, setService] = useState("");
+  const [assignedTo, setAssignedTo] = useState(team[0]?.id || "");
+  const [date, setDate] = useState(initialDate || _addDays(0));
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:30");
+  const [notes, setNotes] = useState("");
+  const handleAdd = () => {
+    if (!client.trim() || !service) return;
+    onAdd({ id: Date.now().toString(36), client: client.trim(), service, assignedTo, date, startTime, endTime, notes, createdAt: new Date().toISOString() });
+    onClose();
+  };
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box">
+        <div className="row between" style={{ marginBottom: 16 }}>
+          <div className="sk-title text-xl">Nuevo agendamiento</div>
+          <span className="serv-tag">SERVICIO CLIENTE</span>
+        </div>
+        <div className="field-group">
+          <div className="field-label">Nombre del cliente *</div>
+          <input className="field-input" value={client} onChange={e => setClient(e.target.value)} placeholder="Nombre del cliente…" autoFocus />
+        </div>
+        <div className="field-group">
+          <div className="field-label">Tipo de servicio *</div>
+          <select className="field-input" value={service} onChange={e => setService(e.target.value)}>
+            <option value="">Selecciona un servicio…</option>
+            {SERVICES_CATALOG.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="field-group">
+            <div className="field-label">Mecánico asignado</div>
+            <select className="field-input" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+              {team.map(m => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
+            </select>
+          </div>
+          <div className="field-group">
+            <div className="field-label">Fecha</div>
+            <input className="field-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="field-group">
+            <div className="field-label">Hora inicio</div>
+            <input className="field-input" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+          </div>
+          <div className="field-group">
+            <div className="field-label">Hora fin (estimado)</div>
+            <input className="field-input" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+          </div>
+        </div>
+        <div className="field-group">
+          <div className="field-label">Notas para el mecánico</div>
+          <textarea className="field-input" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas adicionales…" />
+        </div>
+        <div className="row gap-3" style={{ marginTop: 16 }}>
+          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!client.trim() || !service}>+ Agendar servicio</button>
         </div>
       </div>
     </div>
@@ -1647,13 +1899,19 @@ function AssignTaskModal({ team, onAdd, onClose }: { team: any[]; onAdd: (t: App
 }
 
 // ─── Dashboard del colaborador ────────────────────────────────────────────────
-function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, services, onNewService, onLogout }: {
+function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onLogout }: {
   session: Session; team: any[]; shift: any; setShift: any;
   tasks: AppTask[]; onToggleTask: (id: string) => void;
+  appointments: Appointment[]; onNewAppointment: () => void;
   services: BikeService[]; onNewService: () => void; onLogout: () => void;
 }) {
   const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
+  const todayStr = _fmtDate(new Date());
   const myTasks = tasks.filter(t => t.assignedTo === session.id);
+  const myTodayTasks = myTasks.filter(t => !t.date || t.date === todayStr);
+  const myTodayAppts = appointments.filter(a => a.assignedTo === session.id && a.date === todayStr);
+  const myUpcomingAppts = appointments.filter(a => a.assignedTo === session.id && a.date > todayStr)
+    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
   const isIn = !!shift[session.id!];
   const phName = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
   const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
@@ -1673,58 +1931,115 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
         <button className="action" style={{ fontSize: 12 }} onClick={onLogout}>Salir</button>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 24px", maxWidth: 600, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 80px", maxWidth: 640, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
         {/* Turno */}
-        <div style={{ background: isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `1.4px solid ${isIn ? "var(--accent)" : "var(--line)"}`, borderRadius: 14, padding: 20, textAlign: "center", marginBottom: 24 }}>
+        <div style={{ background: isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `2px solid ${isIn ? "var(--accent)" : "var(--line)"}`, borderStyle: isIn ? "solid" : "dashed", borderRadius: 14, padding: 22, textAlign: "center", marginBottom: 18 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>{isIn ? "🟢" : "⚪"}</div>
           <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{isIn ? "Estás en turno" : "Fuera de turno"}</div>
           <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 14 }}>
             {isIn ? "Haz clic para marcar tu salida" : "Haz clic para marcar tu entrada"}
           </div>
           <button
-            className={"action" + (isIn ? "" : " ink")}
-            style={{ fontSize: 14, padding: "10px 32px", borderRadius: 999, background: isIn ? "#e05555" : "var(--accent)", color: "#fff", border: "none", cursor: "pointer" }}
+            style={{ fontSize: 14, padding: "10px 32px", borderRadius: 999, background: isIn ? "#e05555" : "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}
             onClick={() => setShift((s: any) => ({ ...s, [session.id!]: !s[session.id!] }))}
           >
-            {isIn ? "🔴 Salir de turno" : "🟢 Entrar a turno"}
+            {isIn ? "⬊ Salir de turno" : "⬈ Entrar al turno"}
           </button>
         </div>
 
-        {/* Mis tareas */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Mis tareas {myTasks.length > 0 && <span className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 400 }}>({myTasks.filter(t => !t.done).length} pendientes)</span>}</div>
-          {myTasks.length === 0 ? (
+        {/* Mis tareas del día */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              Mis tareas hoy{" "}
+              {myTodayTasks.length > 0 && <span className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 400 }}>({myTodayTasks.filter(t => !t.done).length} pendientes)</span>}
+            </div>
+          </div>
+          {myTodayTasks.length === 0 ? (
             <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No tienes tareas asignadas por ahora.</div>
-          ) : myTasks.map(t => (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: "var(--paper-2)", borderRadius: 10, marginBottom: 8, border: "1.3px solid var(--line)" }}>
-              <div onClick={() => onToggleTask(t.id)} style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${t.done ? "var(--accent)" : "var(--line)"}`, background: t.done ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: "#fff", fontSize: 13 }}>
+          ) : myTodayTasks.map(t => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: "#dbeafe22", borderRadius: 10, marginBottom: 8, border: "1.3px solid #3b82f6" }}>
+              <div onClick={() => onToggleTask(t.id)} style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${t.done ? "#3b82f6" : "var(--line)"}`, background: t.done ? "#3b82f6" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: "#fff", fontSize: 13 }}>
                 {t.done && "✓"}
               </div>
               <span style={{ flex: 1, fontSize: 14, textDecoration: t.done ? "line-through" : "none", opacity: t.done ? 0.5 : 1 }}>{t.title}</span>
-              <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 8px" }}>{t.tag}</span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "#1d4ed8", background: "#dbeafe", border: "1px solid #3b82f6", borderRadius: 999, padding: "2px 8px" }}>{t.tag}</span>
+                {t.hasTime && <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)" }}>{t.startTime}–{t.endTime}</span>}
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Servicios */}
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Servicios activos</div>
-            <button className="action ink" style={{ fontSize: 12 }} onClick={onNewService}>+ Nuevo servicio</button>
+        {/* Agendamientos de hoy */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Servicios hoy</div>
+            <button className="action" style={{ fontSize: 12, background: "#fff9c4", borderColor: "#c8a800", color: "#7a5500" }} onClick={onNewAppointment}>+ Nuevo servicio</button>
           </div>
-          {services.filter(s => s.phase < 4).length === 0 ? (
-            <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No hay servicios activos.</div>
-          ) : services.filter(s => s.phase < 4).map(s => (
-            <div key={s.id} style={{ background: "var(--paper-2)", border: "1.3px solid var(--line)", borderRadius: 10, padding: 14, marginBottom: 8 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{s.clientName}</div>
-              <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
-              <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
-                {PHASES.map(ph => <div key={ph.id} style={{ flex: 1, height: 4, borderRadius: 2, background: s.phase >= ph.id ? ph.color : "var(--line)" }} />)}
+          {myTodayAppts.length === 0 ? (
+            <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No hay servicios agendados para hoy.</div>
+          ) : myTodayAppts.map(a => (
+            <div key={a.id} className="serv-card-emp">
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span className="serv-tag">{a.startTime}–{a.endTime}</span>
               </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>{phName(s.phase)}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{a.client}</div>
+              <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{a.service}</div>
+              {a.notes && <div style={{ marginTop: 4, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>"{a.notes}"</div>}
             </div>
           ))}
         </div>
+
+        {/* Próximos agendamientos */}
+        {myUpcomingAppts.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Próximos agendamientos</div>
+            {myUpcomingAppts.map(a => (
+              <div key={a.id} style={{ background: "var(--paper-2)", border: "1.3px dashed #c8a800", borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#7a5500", marginBottom: 4 }}>{a.date} · {a.startTime}–{a.endTime}</div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{a.client}</div>
+                <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{a.service}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Mantenimientos disponibles */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Mantenimientos disponibles</div>
+            <span className="sk-mono text-xs muted">Toca para agendar</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+            {SERVICES_CATALOG.map((s, i) => (
+              <div key={i} className="maint-card" onClick={onNewAppointment}>
+                <div className="serv-tag" style={{ marginBottom: 6, fontSize: 10 }}>SERV.</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{s}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Servicios activos (seguimiento de fases) */}
+        {services.filter(s => s.phase < 4).length > 0 && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Bicis en taller</div>
+              <button className="action ink" style={{ fontSize: 12 }} onClick={onNewService}>+ Registrar bici</button>
+            </div>
+            {services.filter(s => s.phase < 4).map(s => (
+              <div key={s.id} style={{ background: "var(--paper-2)", border: "1.3px solid var(--line)", borderRadius: 10, padding: 14, marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{s.clientName}</div>
+                <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
+                <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
+                  {PHASES.map(ph => <div key={ph.id} style={{ flex: 1, height: 4, borderRadius: 2, background: s.phase >= ph.id ? ph.color : "var(--line)" }} />)}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>{phName(s.phase)}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1893,6 +2208,10 @@ export default function App() {
   const [tasks, setTasks] = useState<AppTask[]>(() => {
     try { return JSON.parse(localStorage.getItem("cwb_tasks") || "[]"); } catch { return []; }
   });
+  const [appointments, setAppointments] = useState<Appointment[]>(() => {
+    try { return JSON.parse(localStorage.getItem("cwb_appointments") || "[]"); } catch { return []; }
+  });
+  const [showApptModal, setShowApptModal] = useState(false);
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
   const [shift, setShift] = useState<Record<string, boolean>>(() => {
@@ -1975,14 +2294,19 @@ export default function App() {
     if (fbReady.current) saveShopData({ extendedData });
   }, [extendedData, team]);
 
-  const addService   = (s: BikeService) => setServices(prev => [s, ...prev]);
-  const advancePhase = (id: string) => setServices(prev => prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s));
-  const addTask      = (t: AppTask) => setTasks(prev => [t, ...prev]);
-  const toggleTask   = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  const addService      = (s: BikeService) => setServices(prev => [s, ...prev]);
+  const advancePhase    = (id: string) => setServices(prev => prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s));
+  const addTask         = (t: AppTask) => setTasks(prev => [t, ...prev]);
+  const toggleTask      = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  const addAppointment  = (a: Appointment) => setAppointments(prev => [a, ...prev]);
   const logout = () => { sessionStorage.removeItem("cwb_session"); setSession(null); };
 
+  useEffect(() => {
+    localStorage.setItem("cwb_appointments", JSON.stringify(appointments));
+  }, [appointments]);
+
   const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
-  const breadcrumbs: Record<string, string> = { dash: "HOY", servicios: "BICICLETAS · SERVICIO", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "SEMANA", cal: "CALENDARIO", ops: "PLANTILLAS" };
+  const breadcrumbs: Record<string, string> = { dash: "HOY · " + _fmtDate(new Date()), servicios: "BICICLETAS · SERVICIO", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "TAREAS · " + _fmtDate(new Date()), cal: "CALENDARIO · SEMANA ACTUAL", ops: "PLANTILLAS" };
 
   const trackParam = new URLSearchParams(window.location.search).get("track");
   if (trackParam) {
@@ -1994,12 +2318,20 @@ export default function App() {
 
   if (!session) return <LoginScreen onLogin={(s) => setSession(s)} />;
   if (session.type === "employee") return (
-    <EmployeeDashboard
-      session={session} team={team} shift={shift} setShift={setShift}
-      tasks={tasks} onToggleTask={toggleTask}
-      services={services} onNewService={() => setShowNewService(true)}
-      onLogout={logout}
-    />
+    <>
+      <EmployeeDashboard
+        session={session} team={team} shift={shift} setShift={setShift}
+        tasks={tasks} onToggleTask={toggleTask}
+        appointments={appointments} onNewAppointment={() => setShowApptModal(true)}
+        services={services} onNewService={() => setShowNewService(true)}
+        onLogout={logout}
+      />
+      {showApptModal && (
+        <AppointmentModal team={team} initialDate={_fmtDate(new Date())}
+          onClose={() => setShowApptModal(false)}
+          onAdd={appt => { addAppointment(appt); setShowApptModal(false); }} />
+      )}
+    </>
   );
 
   return (
@@ -2077,8 +2409,16 @@ export default function App() {
               {lunch && shift.s && <span className="chip lunch"><span className="dot" style={{ background: "#fff" }} />1 almuerzo</span>}
               <button className="action ink"><Icon d={I.plus} size={14} /> Añadir tarea</button>
             </>}
-            {section === "tareas" && <><span className="chip">filtro</span><button className="action ink">+ nueva</button></>}
-            {section === "cal" && <><span className="chip">◀ Hoy ▶</span><button className="action ink">+ evento</button></>}
+            {section === "tareas" && (
+              <span className="sk-mono text-xs muted">
+                {tasks.filter(t => !t.done).length} pendientes · {tasks.filter(t => t.done).length} completadas
+              </span>
+            )}
+            {section === "cal" && (
+              <span className="sk-mono text-xs muted">
+                {appointments.filter(a => a.date === _fmtDate(new Date())).length} servicios hoy
+              </span>
+            )}
           </AppBar>
 
           {/* Sub-tabs dashboard */}
@@ -2102,7 +2442,7 @@ export default function App() {
               {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} />}
               {section === "perfil" && <ProfileSection team={team} extendedData={extendedData} onEditMember={updateMemberData} />}
               {section === "tareas" && <TasksSection tasks={tasks} team={team} onToggle={toggleTask} onAssign={() => setShowAssignTask(true)} />}
-              {section === "cal" && <CalendarSection />}
+              {section === "cal" && <CalendarSection tasks={tasks} appointments={appointments} setTasks={fn => setTasks(fn)} setAppointments={fn => setAppointments(fn)} team={team} />}
               {section === "ops" && <OpsSection />}
             </div>
           </div>
@@ -2121,6 +2461,7 @@ export default function App() {
       {showModal && <MemberModal onClose={() => setShowModal(false)} onAdd={addMember} />}
       {showNewService && <NewServiceModal onClose={() => setShowNewService(false)} onAdd={addService} />}
       {showAssignTask && <AssignTaskModal team={team} onAdd={addTask} onClose={() => setShowAssignTask(false)} />}
+      {showApptModal && <AppointmentModal team={team} initialDate={_fmtDate(new Date())} onClose={() => setShowApptModal(false)} onAdd={appt => { addAppointment(appt); setShowApptModal(false); }} />}
     </>
   );
 }
