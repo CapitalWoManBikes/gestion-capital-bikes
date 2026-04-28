@@ -2,10 +2,31 @@ import { useState, useEffect } from "react";
 import emailjs from '@emailjs/browser';
 
 // ─── Configuración EmailJS (cámbiala desde la interfaz o aquí) ───────────────
-const EMAILJS_SERVICE_ID  = "service_dzchw0a";
-const EMAILJS_TEMPLATE_ID = "2ux0vlp";
-const EMAILJS_PUBLIC_KEY  = "UgKvCtUeZVka8ji8t";
-const ADMIN_EMAIL         = "capital.woman.bikes@gmail.com";
+const EMAILJS_SERVICE_ID          = "service_dzchw0a";
+const EMAILJS_TEMPLATE_ID         = "2ux0vlp";
+const EMAILJS_SERVICE_TEMPLATE_ID = "template_XXXXXXX"; // reemplazar cuando crees el template en EmailJS
+const EMAILJS_PUBLIC_KEY          = "UgKvCtUeZVka8ji8t";
+const ADMIN_EMAIL                 = "capital.woman.bikes@gmail.com";
+
+// ─── Fases del servicio de bici ──────────────────────────────────────────────
+const PHASES = [
+  { id: 1, name: "Desarme",            icon: "🔧", color: "#e8a020", msg: "Tu bici está siendo desarmada para su revisión." },
+  { id: 2, name: "Lavado",             icon: "💧", color: "#5cc8e8", msg: "Tu bici está siendo limpiada a fondo." },
+  { id: 3, name: "Ensamble",           icon: "⚙️", color: "#9c4a9e", msg: "Tu bici está siendo ensamblada y ajustada." },
+  { id: 4, name: "Lista para recoger", icon: "✅", color: "#4caf50", msg: "¡Tu bici está lista! Puedes pasar a recogerla." },
+];
+
+interface BikeService {
+  id: string; clientName: string; clientEmail: string;
+  bikeDescription: string; date: string; phase: number;
+  createdAt: string; notes: string;
+}
+
+function buildTrackingUrl(service: BikeService): string {
+  const phase = PHASES.find(p => p.id === service.phase);
+  const data = { clientName: service.clientName, bikeDescription: service.bikeDescription, phase: service.phase, phaseName: phase?.name || "", phaseMsg: phase?.msg || "", phaseIcon: phase?.icon || "", phaseColor: phase?.color || "#6c1f6e", date: service.date, id: service.id };
+  return `${window.location.origin}${window.location.pathname}?track=${btoa(encodeURIComponent(JSON.stringify(data)))}`;
+}
 
 // ─── Colores de marca Capital Wo-Man Bikes ───────────────────────────────────
 // Morado: #6c1f6e  |  Cyan: #5cc8e8
@@ -368,6 +389,7 @@ const I = {
   note: <><path d="M5 4h10l4 4v12H5z" /><path d="M15 4v4h4" /></>,
   in: <><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><path d="M10 17l5-5-5-5" /><path d="M15 12H3" /></>,
   out: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
+  wrench: <><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></>,
 };
 
 function MiniLine({ w = 120, h = 34, seed = 1 }) {
@@ -1390,13 +1412,13 @@ function OpsSection() {
 
 // ─── NAVEGACIÓN ──────────────────────────────────────────────────────────────
 const NAV = [
-  { id: "dash", label: "Dashboard", icon: "home" },
-  { id: "lunch", label: "Almuerzo", icon: "lunch" },
-  { id: "turno", label: "Fichajes/Turno", icon: "in" },
-  { id: "perfil", label: "Perfil equipo", icon: "user" },
-  { id: "tareas", label: "Tareas", icon: "tasks" },
-  { id: "cal", label: "Calendario", icon: "cal" },
-  { id: "ops", label: "1:1 y Onboarding", icon: "note" },
+  { id: "dash",      label: "Dashboard",       icon: "home"   },
+  { id: "servicios", label: "Servicios",        icon: "wrench" },
+  { id: "lunch",     label: "Almuerzo",         icon: "lunch"  },
+  { id: "turno",     label: "Fichajes/Turno",   icon: "in"     },
+  { id: "perfil",    label: "Perfil equipo",    icon: "user"   },
+  { id: "tareas",    label: "Tareas",           icon: "tasks"  },
+  { id: "cal",       label: "Calendario",       icon: "cal"    },
 ];
 const DASH_TABS = [
   { id: "lista", label: "A · Lista" },
@@ -1404,6 +1426,196 @@ const DASH_TABS = [
   { id: "timeline", label: "C · Timeline" },
   { id: "mapa", label: "D · Mapa" },
 ];
+
+// ─── Vista pública de seguimiento para clientes ───────────────────────────────
+function CustomerTrackingView({ data }: { data: any }) {
+  const cur = data.phase as number;
+  return (
+    <div style={{ minHeight: "100vh", background: "#1a0d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <style>{CSS}</style>
+      <div style={{ width: "100%", maxWidth: 480, background: "#221222", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 32px #0008" }}>
+        <div style={{ background: "#6c1f6e", padding: "20px 24px", textAlign: "center" }}>
+          <Logo height={36} />
+          <div style={{ color: "#e8d5e8", fontFamily: "monospace", fontSize: 11, letterSpacing: 2, marginTop: 10 }}>SEGUIMIENTO DE SERVICIO</div>
+        </div>
+        <div style={{ padding: 24 }}>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ color: "#c8a8c8", fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>CLIENTE</div>
+            <div style={{ color: "#e8d5e8", fontSize: 18, fontWeight: 700, marginTop: 4 }}>{data.clientName}</div>
+            <div style={{ color: "#a080a0", fontSize: 13, marginTop: 2 }}>{data.bikeDescription}</div>
+          </div>
+          {PHASES.map((ph, i) => {
+            const done = cur > ph.id, active = cur === ph.id;
+            return (
+              <div key={ph.id} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ width: 38, height: 38, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: done ? "#4caf50" : active ? ph.color : "#2d1a2d", border: `2px solid ${done ? "#4caf50" : active ? ph.color : "#4a2a4a"}`, fontSize: 18, flexShrink: 0 }}>
+                    {done ? "✓" : ph.icon}
+                  </div>
+                  {i < PHASES.length - 1 && <div style={{ width: 2, height: 28, background: done ? "#4caf50" : "#2d1a2d", margin: "3px 0" }} />}
+                </div>
+                <div style={{ paddingTop: 7, paddingBottom: i < PHASES.length - 1 ? 28 : 0 }}>
+                  <div style={{ color: done ? "#4caf50" : active ? "#e8d5e8" : "#5a3a5a", fontWeight: active ? 700 : 400, fontSize: 15 }}>{ph.name}</div>
+                  {active && <div style={{ color: "#a080a0", fontSize: 12, marginTop: 2 }}>{ph.msg}</div>}
+                </div>
+              </div>
+            );
+          })}
+          {cur === 4 && (
+            <div style={{ background: "#1a3a1a", border: "1px solid #4caf50", borderRadius: 10, padding: 16, textAlign: "center", marginTop: 16 }}>
+              <div style={{ fontSize: 28 }}>🎉</div>
+              <div style={{ color: "#4caf50", fontWeight: 700, fontSize: 16, marginTop: 6 }}>¡Tu bici está lista!</div>
+              <div style={{ color: "#a0c0a0", fontSize: 13, marginTop: 4 }}>Puedes pasar a recogerla en nuestro taller.</div>
+            </div>
+          )}
+        </div>
+        <div style={{ padding: "12px 24px", borderTop: "1px solid #3a1a3a", textAlign: "center" }}>
+          <div style={{ color: "#5a3a5a", fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>CAPITAL WO-MAN BIKES</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal nuevo servicio ─────────────────────────────────────────────────────
+function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: BikeService) => void }) {
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [bikeDescription, setBikeDescription] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [notes, setNotes] = useState("");
+  const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
+  const lbl: React.CSSProperties = { fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 4 };
+  const canAdd = clientName.trim() && clientEmail.trim() && bikeDescription.trim();
+  const handleAdd = () => {
+    if (!canAdd) return;
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    onAdd({ id, clientName: clientName.trim(), clientEmail: clientEmail.trim(), bikeDescription: bikeDescription.trim(), date, phase: 0, createdAt: new Date().toISOString(), notes });
+    onClose();
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#0008", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "var(--paper-2)", borderRadius: 14, padding: 24, width: "100%", maxWidth: 400, boxShadow: "0 4px 32px #0006", maxHeight: "90vh", overflowY: "auto" }}>
+        <div className="sk-mono" style={{ fontSize: 12, letterSpacing: 2, color: "var(--ink-3)", marginBottom: 18 }}>NUEVO SERVICIO</div>
+        <label style={lbl}>Nombre del cliente *</label>
+        <input style={inp} value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Juan García" autoFocus />
+        <label style={lbl}>Email del cliente *</label>
+        <input style={inp} type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="juan@email.com" />
+        <label style={lbl}>Descripción de la bici *</label>
+        <input style={inp} value={bikeDescription} onChange={e => setBikeDescription(e.target.value)} placeholder="Trek Marlin azul 2022" />
+        <label style={lbl}>Fecha de ingreso</label>
+        <input style={inp} type="date" value={date} onChange={e => setDate(e.target.value)} />
+        <label style={lbl}>Notas (opcional)</label>
+        <textarea style={{ ...inp, resize: "vertical" as const, minHeight: 60 }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Cambio de frenos, ajuste de cambios..." />
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!canAdd}>Crear servicio</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sección de servicios (admin) ─────────────────────────────────────────────
+function ServiceSection({ services, onAdvancePhase, onNewService }: { services: BikeService[]; onAdvancePhase: (id: string) => void; onNewService: () => void }) {
+  const [sending, setSending] = useState<string | null>(null);
+  const [copied, setCopied]   = useState<string | null>(null);
+
+  const notifyClient = async (s: BikeService) => {
+    const ph = PHASES.find(p => p.id === s.phase);
+    if (!ph) { alert("Avanza primero a una fase."); return; }
+    setSending(s.id);
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
+        email: s.clientEmail, client_email: s.clientEmail,
+        client_name: s.clientName, bike_description: s.bikeDescription,
+        phase_name: ph.name, phase_icon: ph.icon, phase_message: ph.msg,
+        tracking_link: buildTrackingUrl(s),
+      }, EMAILJS_PUBLIC_KEY);
+      alert(`✅ Email enviado a ${s.clientEmail}`);
+    } catch { alert("Error al enviar email. Configura el template de servicio en EmailJS."); }
+    setSending(null);
+  };
+
+  const copyLink = (s: BikeService) => {
+    navigator.clipboard.writeText(buildTrackingUrl(s));
+    setCopied(s.id); setTimeout(() => setCopied(null), 2000);
+  };
+
+  const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
+  const phName  = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
+  const phIcon  = (p: number) => p === 0 ? "📋" : PHASES.find(ph => ph.id === p)?.icon || "";
+  const active  = services.filter(s => s.phase < 4);
+  const done    = services.filter(s => s.phase === 4);
+
+  return (
+    <div style={{ padding: 20, maxWidth: 700, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Servicios de bicicletas</div>
+          <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>{active.length} activos · {done.length} completados</div>
+        </div>
+        <button className="action ink" onClick={onNewService}>+ Nuevo servicio</button>
+      </div>
+
+      {services.length === 0 && (
+        <div className="placeholder" style={{ borderRadius: 12, padding: 48, textAlign: "center" }}>
+          No hay servicios aún.<br />Crea el primero con el botón de arriba.
+        </div>
+      )}
+
+      {active.map(s => (
+        <div key={s.id} style={{ background: "var(--paper)", border: "1.4px solid var(--line)", borderRadius: 12, padding: 16, marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{s.clientName}</div>
+              <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
+              <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>📅 {s.date}</div>
+            </div>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--paper-2)", border: `1.5px solid ${phColor(s.phase)}`, borderRadius: 999, padding: "4px 12px", fontSize: 13, whiteSpace: "nowrap" as const }}>
+              {phIcon(s.phase)} <span style={{ color: phColor(s.phase), fontWeight: 600 }}>{phName(s.phase)}</span>
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+            {PHASES.map(ph => <div key={ph.id} style={{ flex: 1, height: 5, borderRadius: 3, background: s.phase >= ph.id ? ph.color : "var(--line)", transition: "background .3s" }} />)}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
+            {s.phase < 4 && (
+              <button className="action accent" style={{ fontSize: 12 }} onClick={() => onAdvancePhase(s.id)}>
+                → {PHASES.find(p => p.id === s.phase + 1)?.name}
+              </button>
+            )}
+            <button className="action" style={{ fontSize: 12 }} onClick={() => notifyClient(s)} disabled={s.phase === 0 || sending === s.id}>
+              {sending === s.id ? "Enviando..." : "📧 Notificar cliente"}
+            </button>
+            <button className="action" style={{ fontSize: 12 }} onClick={() => copyLink(s)}>
+              {copied === s.id ? "✓ Copiado" : "🔗 Copiar link"}
+            </button>
+          </div>
+          {s.notes && <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>📝 {s.notes}</div>}
+        </div>
+      ))}
+
+      {done.length > 0 && (
+        <>
+          <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: 1, marginTop: 24, marginBottom: 10 }}>COMPLETADOS</div>
+          {done.map(s => (
+            <div key={s.id} style={{ background: "var(--paper)", border: "1.4px solid var(--line)", borderRadius: 12, padding: 14, marginBottom: 8, opacity: 0.65 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>{s.clientName}</span>
+                  <span style={{ color: "var(--ink-3)", fontSize: 13 }}> · {s.bikeDescription}</span>
+                  <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>📅 {s.date}</div>
+                </div>
+                <span style={{ color: "#4caf50", fontSize: 13 }}>✅ Lista para recoger</span>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
 
 const STORED_PASSWORD_KEY = "cwb_admin_pwd";
 const getAdminPassword = () => localStorage.getItem(STORED_PASSWORD_KEY) || "capital2024";
@@ -1537,8 +1749,20 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 }
 
 export default function App() {
+  const trackParam = new URLSearchParams(window.location.search).get("track");
+  if (trackParam) {
+    try {
+      const data = JSON.parse(decodeURIComponent(atob(trackParam)));
+      return <CustomerTrackingView data={data} />;
+    } catch { /* invalid param, show login */ }
+  }
+
   const [isLoggedIn, setIsLoggedIn] = useState(() => sessionStorage.getItem("cwb_admin") === "1");
   const [section, setSection] = useState("dash");
+  const [showNewService, setShowNewService] = useState(false);
+  const [services, setServices] = useState<BikeService[]>(() => {
+    try { return JSON.parse(localStorage.getItem("cwb_services") || "[]"); } catch { return []; }
+  });
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
   const [shift, setShift] = useState({ s: false, c: false });
@@ -1564,8 +1788,13 @@ export default function App() {
     setExtendedData(d => ({ ...d, [id]: { salario: data.salario, direccion: data.direccion, documento: data.documento, eps: data.eps, horasSemana: data.horasSemana } }));
   };
 
-  const titles = { dash: "Mi equipo", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
-  const breadcrumbs = { dash: "HOY · MAR 21 ABR", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "SEMANA 21–27 ABR", cal: "SEMANA 21–27 ABR", ops: "PLANTILLAS" };
+  useEffect(() => { localStorage.setItem("cwb_services", JSON.stringify(services)); }, [services]);
+
+  const addService = (s: BikeService) => setServices(prev => [s, ...prev]);
+  const advancePhase = (id: string) => setServices(prev => prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s));
+
+  const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
+  const breadcrumbs: Record<string, string> = { dash: "HOY", servicios: "BICICLETAS · SERVICIO", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "SEMANA", cal: "CALENDARIO", ops: "PLANTILLAS" };
 
   if (!isLoggedIn) return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
 
@@ -1660,6 +1889,7 @@ export default function App() {
           {/* Contenido */}
           <div className="content-area">
             <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+              {section === "servicios" && <ServiceSection services={services} onAdvancePhase={advancePhase} onNewService={() => setShowNewService(true)} />}
               {section === "dash" && dashTab === "lista" && <DashLista lunchState={lunch} shiftState={shift} team={team} onRemove={removeMember} />}
               {section === "dash" && dashTab === "kanban" && <DashKanban />}
               {section === "dash" && dashTab === "timeline" && <DashTimeline />}
@@ -1685,6 +1915,7 @@ export default function App() {
       </nav>
 
       {showModal && <MemberModal onClose={() => setShowModal(false)} onAdd={addMember} />}
+      {showNewService && <NewServiceModal onClose={() => setShowNewService(false)} onAdd={addService} />}
     </>
   );
 }
