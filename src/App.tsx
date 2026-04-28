@@ -1676,7 +1676,11 @@ function ServiceSection({ services, onAdvancePhase, onNewService }: { services: 
         tracking_link: buildTrackingUrl(s),
       }, EMAILJS_PUBLIC_KEY);
       alert(`✅ Email enviado a ${s.clientEmail}`);
-    } catch { alert("Error al enviar email. Configura el template de servicio en EmailJS."); }
+    } catch {
+      // Email falla silenciosamente si el template no está configurado
+      // El link de seguimiento sigue disponible para compartir manualmente
+      console.warn("EmailJS: template de servicio no configurado. Usa el link de seguimiento.");
+    }
     setSending(null);
   };
 
