@@ -21,6 +21,9 @@ interface BikeService {
   id: string; clientName: string; clientEmail: string;
   bikeDescription: string; date: string; phase: number;
   createdAt: string; notes: string;
+  startTime?: string; endTime?: string; technicianId?: string;
+  paymentStatus?: "pendiente" | "pagado" | "adelanto";
+  deliveryStatus?: "en_taller" | "lista" | "entregada";
 }
 interface AppTask {
   id: string; title: string; assignedTo: string;
@@ -233,6 +236,7 @@ const CSS = `
   /* ── Calendario: tipo de evento ── */
   .cal-event.ev-service{background:#fff9c4;border-color:#c8a800;}
   .cal-event.ev-task{background:#dbeafe;border-color:#3b82f6;}
+  .cal-event.ev-bici{background:rgba(108,31,110,.1);border-color:#6c1f6e;}
   .cal-day{position:relative;}
   .cal-add-btn{position:absolute;bottom:6px;right:6px;background:var(--ink);color:var(--paper);border:none;border-radius:999px;width:22px;height:22px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;opacity:0;transition:opacity .15s;padding:0;}
   .cal-day:hover .cal-add-btn{opacity:.8;}
@@ -335,13 +339,14 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
   const [eps, setEps] = useState(extData.eps || "");
   const [horasSemana, setHorasSemana] = useState(extData.horasSemana || "40");
   const [employeePin, setEmployeePin] = useState(extData.pin || "");
+  const [permissions, setPermissions] = useState(extData.permissions || { ...DEFAULT_PERMISSIONS });
   const roles = ["Mecánico", "Tienda/Caja", "Administración", "Reparto", "Otro"];
   const verifyPin = () => {
     if (pin === ADMIN_PIN) { setPinOk(true); setPinError(""); }
     else setPinError("PIN incorrecto. Solo administración puede editar.");
   };
   const save = () => {
-    onSave({ name, role, salario, direccion, documento, eps, horasSemana, pin: employeePin });
+    onSave({ name, role, salario, direccion, documento, eps, horasSemana, pin: employeePin, permissions });
     onClose();
   };
   return (
@@ -396,6 +401,25 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
               <Field label="HORAS SEMANALES OBLIGATORIAS" value={horasSemana} onChange={setHorasSemana} placeholder="40" />
               <hr className="sk-hr dashed" />
               <Field label="PIN DE ACCESO COLABORADOR (4 dígitos)" value={employeePin} onChange={setEmployeePin} placeholder="1234" />
+              <hr className="sk-hr dashed" />
+              <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>PERMISOS</div>
+              {([
+                { key: "canScheduleServices", label: "Puede agendar servicios" },
+                { key: "canEditAppointments", label: "Puede editar agendamientos" },
+                { key: "canRegisterBikes", label: "Puede registrar bicicletas" },
+                { key: "canModifyServices", label: "Puede modificar servicios" },
+              ] as const).map(p => (
+                <div key={p.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 13 }}>{p.label}</span>
+                  <button
+                    className={"action" + (permissions[p.key] ? " accent" : "")}
+                    style={{ fontSize: 12, padding: "3px 10px", minWidth: 80 }}
+                    onClick={() => setPermissions((prev: any) => ({ ...prev, [p.key]: !prev[p.key] }))}
+                  >
+                    {permissions[p.key] ? "✓ Activo" : "Inactivo"}
+                  </button>
+                </div>
+              ))}
             </div>
             <div className="row gap-2" style={{ marginTop: 24, justifyContent: "flex-end" }}>
               <button className="action" onClick={onClose}>Cancelar</button>
@@ -1303,10 +1327,11 @@ function TasksSection({ tasks, team, onToggle, onAssign }: { tasks: AppTask[]; t
 }
 
 // ─── SECCIÓN 5: Calendario ───────────────────────────────────────────────────
-function CalendarSection({ tasks, appointments, setTasks, setAppointments, team }: {
-  tasks: AppTask[]; appointments: Appointment[];
+function CalendarSection({ tasks, appointments, services, setTasks, setAppointments, onNewBikeService, team }: {
+  tasks: AppTask[]; appointments: Appointment[]; services: BikeService[];
   setTasks: (fn: (prev: AppTask[]) => AppTask[]) => void;
   setAppointments: (fn: (prev: Appointment[]) => Appointment[]) => void;
+  onNewBikeService: (date: string) => void;
   team: any[];
 }) {
   const [weekOffset, setWeekOffset] = useState(0);
@@ -1354,9 +1379,9 @@ function CalendarSection({ tasks, appointments, setTasks, setAppointments, team 
             onClick={() => openAdd(todayStr, "task")}>
             <Icon d={I.plus} size={13} /> Tarea
           </button>
-          <button className="action" style={{ background: "#fff9c4", borderColor: "#c8a800", color: "#7a5500" }}
-            onClick={() => openAdd(todayStr, "appt")}>
-            <Icon d={I.plus} size={13} /> Agendamiento
+          <button className="action" style={{ background: "rgba(108,31,110,.1)", borderColor: "#6c1f6e", color: "#6c1f6e" }}
+            onClick={() => onNewBikeService(todayStr)}>
+            <Icon d={I.plus} size={13} /> Servicio de bici
           </button>
         </div>
       </div>
@@ -1368,12 +1393,28 @@ function CalendarSection({ tasks, appointments, setTasks, setAppointments, team 
           const isToday = dateStr === todayStr;
           const dayAppts = appointments.filter(a => a.date === dateStr);
           const dayTasks = tasks.filter(t => t.date === dateStr);
+          const dayBikes = services.filter(s => s.date === dateStr);
           return (
             <div key={i} className="cal-day" style={{ background: isToday ? "rgba(108,31,110,.04)" : undefined, minHeight: 120 }}>
               <div className="sk-mono text-xs tracked muted">{DAY_NAMES[i]}</div>
               <div className="sk-title text-2xl" style={{ lineHeight: 1, marginBottom: 8, color: isToday ? "var(--accent)" : "var(--ink)" }}>
                 {day.getDate()}
               </div>
+
+              {/* Servicios bici — morado */}
+              {dayBikes.map(s => {
+                const tech = team.find(p => p.id === s.technicianId);
+                const phInfo = PHASES.find(ph => ph.id === s.phase);
+                return (
+                  <div key={s.id} className="cal-event ev-bici" title={`${s.clientName} · ${s.bikeDescription}`}>
+                    {s.startTime && <div className="sk-mono text-xs" style={{ color: "#6c1f6e" }}>{s.startTime}{s.endTime ? `–${s.endTime}` : ""}</div>}
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>{s.clientName}</div>
+                    <div style={{ fontSize: 10, color: "#6c1f6e" }}>{s.bikeDescription}</div>
+                    <div style={{ fontSize: 10, color: "#9c4a9e" }}>{s.phase === 0 ? "📋 Recibida" : `${phInfo?.icon} ${phInfo?.name}`}</div>
+                    {tech && <div style={{ fontSize: 10, color: "#9c4a9e" }}>🔧 {tech.name}</div>}
+                  </div>
+                );
+              })}
 
               {/* Agendamientos — amarillo */}
               {dayAppts.map(a => {
@@ -1402,10 +1443,10 @@ function CalendarSection({ tasks, appointments, setTasks, setAppointments, team 
                 );
               })}
 
-              {dayAppts.length === 0 && dayTasks.length === 0 && (
+              {dayAppts.length === 0 && dayTasks.length === 0 && dayBikes.length === 0 && (
                 <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", marginTop: 4 }}>—</div>
               )}
-              <button className="cal-add-btn" title="Añadir agendamiento" onClick={() => openAdd(dateStr, "appt")}>+</button>
+              <button className="cal-add-btn" title="Agregar servicio de bici" onClick={() => onNewBikeService(dateStr)}>+</button>
             </div>
           );
         })}
@@ -1415,8 +1456,12 @@ function CalendarSection({ tasks, appointments, setTasks, setAppointments, team 
       <div className="row between" style={{ padding: "10px 14px", flexShrink: 0 }}>
         <div className="row gap-4" style={{ flexWrap: "wrap" }}>
           <div className="row gap-2">
+            <div style={{ width: 12, height: 12, background: "rgba(108,31,110,.1)", border: "1.2px solid #6c1f6e", borderRadius: 3, flexShrink: 0 }} />
+            <span className="sk-mono text-xs muted">Servicios de bicicleta</span>
+          </div>
+          <div className="row gap-2">
             <div style={{ width: 12, height: 12, background: "#fff9c4", border: "1.2px solid #c8a800", borderRadius: 3, flexShrink: 0 }} />
-            <span className="sk-mono text-xs muted">Agendamientos · servicios a clientes</span>
+            <span className="sk-mono text-xs muted">Agendamientos internos</span>
           </div>
           <div className="row gap-2">
             <div style={{ width: 12, height: 12, background: "#dbeafe", border: "1.2px solid #3b82f6", borderRadius: 3, flexShrink: 0 }} />
@@ -1424,7 +1469,7 @@ function CalendarSection({ tasks, appointments, setTasks, setAppointments, team 
           </div>
         </div>
         <span className="sk-mono text-xs muted">
-          {appointments.filter(a => a.date === todayStr).length} servicios · {tasks.filter(t => t.date === todayStr && !t.done).length} tareas pendientes hoy
+          {services.filter(s => s.date === todayStr).length} bicis · {appointments.filter(a => a.date === todayStr).length} appts · {tasks.filter(t => t.date === todayStr && !t.done).length} tareas hoy
         </span>
       </div>
 
@@ -1621,12 +1666,16 @@ function CustomerTrackingView({ data }: { data: any }) {
 }
 
 // ─── Modal nuevo servicio ─────────────────────────────────────────────────────
-function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: BikeService) => void }) {
+function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: () => void; onAdd: (s: BikeService) => void; team?: any[]; initialDate?: string }) {
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [bikeDescription, setBikeDescription] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(initialDate || new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
+  const [technicianId, setTechnicianId] = useState(team[0]?.id || "");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:30");
+  const [paymentStatus, setPaymentStatus] = useState<"pendiente" | "pagado" | "adelanto">("pendiente");
   const [saving, setSaving] = useState(false);
   const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
   const lbl: React.CSSProperties = { fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 4 };
@@ -1635,9 +1684,15 @@ function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: B
     if (!canAdd || saving) return;
     setSaving(true);
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-    const newService: BikeService = { id, clientName: clientName.trim(), clientEmail: clientEmail.trim(), bikeDescription: bikeDescription.trim(), date, phase: 0, createdAt: new Date().toISOString(), notes };
+    const newService: BikeService = {
+      id, clientName: clientName.trim(), clientEmail: clientEmail.trim(),
+      bikeDescription: bikeDescription.trim(), date, phase: 0,
+      createdAt: new Date().toISOString(), notes,
+      startTime, endTime,
+      technicianId: technicianId || undefined,
+      paymentStatus, deliveryStatus: "en_taller",
+    };
     onAdd(newService);
-    // Email de confirmación al cliente
     const trackingLink = buildTrackingUrl(newService);
     try {
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
@@ -1658,7 +1713,7 @@ function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: B
   };
   return (
     <div style={{ position: "fixed", inset: 0, background: "#0008", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "var(--paper-2)", borderRadius: 14, padding: 24, width: "100%", maxWidth: 400, boxShadow: "0 4px 32px #0006", maxHeight: "90vh", overflowY: "auto" }}>
+      <div style={{ background: "var(--paper-2)", borderRadius: 14, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 4px 32px #0006", maxHeight: "90vh", overflowY: "auto" }}>
         <div className="sk-mono" style={{ fontSize: 12, letterSpacing: 2, color: "var(--ink-3)", marginBottom: 18 }}>NUEVO SERVICIO</div>
         <label style={lbl}>Nombre del cliente *</label>
         <input style={inp} value={clientName} onChange={e => setClientName(e.target.value)} placeholder="Juan García" autoFocus />
@@ -1666,8 +1721,37 @@ function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: B
         <input style={inp} type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="juan@email.com" />
         <label style={lbl}>Descripción de la bici *</label>
         <input style={inp} value={bikeDescription} onChange={e => setBikeDescription(e.target.value)} placeholder="Trek Marlin azul 2022" />
-        <label style={lbl}>Fecha de ingreso</label>
-        <input style={inp} type="date" value={date} onChange={e => setDate(e.target.value)} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={lbl}>Fecha de ingreso</label>
+            <input style={inp} type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>Técnico asignado</label>
+            <select style={{ ...inp, marginBottom: 0 }} value={technicianId} onChange={e => setTechnicianId(e.target.value)}>
+              <option value="">Sin asignar</option>
+              {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 0 }}>
+          <div>
+            <label style={lbl}>Hora inicio</label>
+            <input style={inp} type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>Hora fin (est.)</label>
+            <input style={inp} type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+          </div>
+        </div>
+        <label style={lbl}>Estado de pago</label>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {(["pendiente", "adelanto", "pagado"] as const).map(p => (
+            <button key={p} className={"action" + (paymentStatus === p ? " accent" : "")} style={{ fontSize: 12, flex: 1, padding: "6px 4px" }} onClick={() => setPaymentStatus(p)}>
+              {p === "pendiente" ? "💰 Pendiente" : p === "adelanto" ? "📤 Adelanto" : "✅ Pagado"}
+            </button>
+          ))}
+        </div>
         <label style={lbl}>Notas (opcional)</label>
         <textarea style={{ ...inp, resize: "vertical" as const, minHeight: 60 }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Cambio de frenos, ajuste de cambios..." />
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -1680,7 +1764,7 @@ function NewServiceModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: B
 }
 
 // ─── Sección de servicios (admin) ─────────────────────────────────────────────
-function ServiceSection({ services, onAdvancePhase, onNewService }: { services: BikeService[]; onAdvancePhase: (id: string) => void; onNewService: () => void }) {
+function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateService = () => {}, team = [] }: { services: BikeService[]; onAdvancePhase: (id: string) => void; onNewService: () => void; onUpdateService?: (id: string, changes: Partial<BikeService>) => void; team?: any[] }) {
   const [sending, setSending] = useState<string | null>(null);
   const [copied, setCopied]   = useState<string | null>(null);
 
@@ -1740,7 +1824,8 @@ function ServiceSection({ services, onAdvancePhase, onNewService }: { services: 
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{s.clientName}</div>
               <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
-              <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>📅 {s.date}</div>
+              <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>📅 {s.date}{s.startTime ? ` · ${s.startTime}${s.endTime ? `–${s.endTime}` : ""}` : ""}</div>
+              {s.technicianId && team.find(p => p.id === s.technicianId) && <div className="sk-mono" style={{ fontSize: 10, color: "#6c1f6e", marginTop: 1 }}>🔧 {team.find(p => p.id === s.technicianId)?.name}</div>}
             </div>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--paper-2)", border: `1.5px solid ${phColor(s.phase)}`, borderRadius: 999, padding: "4px 12px", fontSize: 13, whiteSpace: "nowrap" as const }}>
               {phIcon(s.phase)} <span style={{ color: phColor(s.phase), fontWeight: 600 }}>{phName(s.phase)}</span>
@@ -1763,6 +1848,24 @@ function ServiceSection({ services, onAdvancePhase, onNewService }: { services: 
             </button>
           </div>
           {s.notes && <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>📝 {s.notes}</div>}
+          <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
+            <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginRight: 2 }}>PAGO:</span>
+            {(["pendiente", "adelanto", "pagado"] as const).map(p => (
+              <button key={p} onClick={() => onUpdateService(s.id, { paymentStatus: p })}
+                style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: `1.3px solid ${(s.paymentStatus || "pendiente") === p ? "#6c1f6e" : "var(--line)"}`, background: (s.paymentStatus || "pendiente") === p ? "rgba(108,31,110,.1)" : "transparent", color: (s.paymentStatus || "pendiente") === p ? "#6c1f6e" : "var(--ink-3)", cursor: "pointer", fontFamily: "inherit" }}>
+                {p === "pendiente" ? "Pendiente" : p === "adelanto" ? "Adelanto" : "Pagado"}
+              </button>
+            ))}
+            <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>
+              {s.deliveryStatus === "entregada" ? "🏠 Entregada" : s.phase === 4 ? "✅ Lista" : "🔧 En taller"}
+            </span>
+            {s.phase === 4 && s.deliveryStatus !== "entregada" && (
+              <button onClick={() => onUpdateService(s.id, { deliveryStatus: "entregada" })}
+                style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: "1.3px solid #4caf50", background: "rgba(76,175,80,.1)", color: "#2e7d32", cursor: "pointer", fontFamily: "inherit" }}>
+                Marcar entregada
+              </button>
+            )}
+          </div>
         </div>
       ))}
 
@@ -1926,20 +2029,26 @@ function AppointmentModal({ team, initialDate, onAdd, onClose }: { team: any[]; 
 }
 
 // ─── Dashboard del colaborador ────────────────────────────────────────────────
-function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout }: {
+function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout, extendedData = {} }: {
   session: Session; team: any[]; shift: any; setShift: any;
   tasks: AppTask[]; onToggleTask: (id: string) => void;
   appointments: Appointment[]; onNewAppointment: () => void;
   services: BikeService[]; onNewService: () => void; onAdvancePhase: (id: string) => void; onLogout: () => void;
+  extendedData?: any;
 }) {
   const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
   const todayStr = _fmtDate(new Date());
   const myTasks = tasks.filter(t => t.assignedTo === session.id);
   const myTodayTasks = myTasks.filter(t => !t.date || t.date === todayStr);
   const myTodayAppts = appointments.filter(a => a.assignedTo === session.id && a.date === todayStr);
+  const myTodayBikes = services.filter(s => s.technicianId === session.id && s.date === todayStr && s.phase < 4);
   const myUpcomingAppts = appointments.filter(a => a.assignedTo === session.id && a.date > todayStr)
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
+  const myUpcomingBikes = services.filter(s => s.technicianId === session.id && s.date > todayStr && s.phase < 4)
+    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
   const isIn = !!shift[session.id!];
+  const extData = (extendedData as any)[session.id!] || {};
+  const perms = extData.permissions || { ...DEFAULT_PERMISSIONS };
   const phName = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
   const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
 
@@ -1998,30 +2107,57 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
           ))}
         </div>
 
-        {/* Agendamientos de hoy */}
+        {/* Servicios hoy (bicis asignadas + agendamientos) */}
         <div style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 15 }}>Servicios hoy</div>
-            <button className="action" style={{ fontSize: 12, background: "#fff9c4", borderColor: "#c8a800", color: "#7a5500" }} onClick={onNewAppointment}>+ Nuevo servicio</button>
+            {perms.canScheduleServices && (
+              <button className="action" style={{ fontSize: 12, background: "rgba(108,31,110,.1)", borderColor: "#6c1f6e", color: "#6c1f6e" }} onClick={onNewService}>+ Nuevo servicio</button>
+            )}
           </div>
-          {myTodayAppts.length === 0 ? (
-            <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No hay servicios agendados para hoy.</div>
-          ) : myTodayAppts.map(a => (
-            <div key={a.id} className="serv-card-emp">
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span className="serv-tag">{a.startTime}–{a.endTime}</span>
-              </div>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{a.client}</div>
-              <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{a.service}</div>
-              {a.notes && <div style={{ marginTop: 4, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>"{a.notes}"</div>}
-            </div>
-          ))}
+          {myTodayBikes.length === 0 && myTodayAppts.length === 0 ? (
+            <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No hay servicios asignados para hoy.</div>
+          ) : (
+            <>
+              {myTodayBikes.map(s => (
+                <div key={s.id} style={{ padding: 14, border: "1.5px solid #6c1f6e", borderRadius: 12, background: "rgba(108,31,110,.05)", marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontFamily: "var(--mono)", background: "rgba(108,31,110,.1)", border: "1px solid #6c1f6e", color: "#6c1f6e", borderRadius: 999, padding: "2px 8px" }}>🔧 BICI</span>
+                    {s.startTime && <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#6c1f6e" }}>{s.startTime}{s.endTime ? `–${s.endTime}` : ""}</span>}
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{s.clientName}</div>
+                  <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>
+                    {s.phase === 0 ? "📋 Recibida" : `${PHASES.find(ph => ph.id === s.phase)?.icon} ${phName(s.phase)}`}
+                  </div>
+                  {s.notes && <div style={{ marginTop: 4, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>"{s.notes}"</div>}
+                </div>
+              ))}
+              {myTodayAppts.map(a => (
+                <div key={a.id} className="serv-card-emp">
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span className="serv-tag">{a.startTime}–{a.endTime}</span>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{a.client}</div>
+                  <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{a.service}</div>
+                  {a.notes && <div style={{ marginTop: 4, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>"{a.notes}"</div>}
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
-        {/* Próximos agendamientos */}
-        {myUpcomingAppts.length > 0 && (
+        {/* Próximos servicios */}
+        {(myUpcomingAppts.length > 0 || myUpcomingBikes.length > 0) && (
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Próximos agendamientos</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Próximos servicios</div>
+            {myUpcomingBikes.map(s => (
+              <div key={s.id} style={{ background: "var(--paper-2)", border: "1.3px dashed #6c1f6e", borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#6c1f6e", marginBottom: 4 }}>{s.date}{s.startTime ? ` · ${s.startTime}` : ""}</div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{s.clientName}</div>
+                <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
+              </div>
+            ))}
             {myUpcomingAppts.map(a => (
               <div key={a.id} style={{ background: "var(--paper-2)", border: "1.3px dashed #c8a800", borderRadius: 10, padding: 12, marginBottom: 8 }}>
                 <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "#7a5500", marginBottom: 4 }}>{a.date} · {a.startTime}–{a.endTime}</div>
@@ -2033,26 +2169,28 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
         )}
 
         {/* Mantenimientos disponibles */}
+        {perms.canScheduleServices && (
         <div style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Mantenimientos disponibles</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Catálogo de servicios</div>
             <span className="sk-mono text-xs muted">Toca para agendar</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
             {SERVICES_CATALOG.map((s, i) => (
-              <div key={i} className="maint-card" onClick={onNewAppointment}>
+              <div key={i} className="maint-card" onClick={onNewService}>
                 <div className="serv-tag" style={{ marginBottom: 6, fontSize: 10 }}>SERV.</div>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{s}</div>
               </div>
             ))}
           </div>
         </div>
+        )}
 
         {/* Servicios activos (seguimiento de fases) */}
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 15 }}>Bicis en taller</div>
-            <button className="action ink" style={{ fontSize: 12 }} onClick={onNewService}>+ Registrar bici</button>
+            {perms.canRegisterBikes && <button className="action ink" style={{ fontSize: 12 }} onClick={onNewService}>+ Registrar bici</button>}
           </div>
           {services.filter(s => s.phase < 4).length === 0 ? (
             <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No hay bicis en taller ahora.</div>
@@ -2067,7 +2205,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>{s.phase === 0 ? "📋 Recibida" : `${PHASES.find(ph => ph.id === s.phase)?.icon} ${phName(s.phase)}`}</div>
-                  {nextPhase && (
+                  {nextPhase && perms.canModifyServices && (
                     <button
                       onClick={() => onAdvancePhase(s.id)}
                       style={{ fontSize: 12, padding: "5px 12px", borderRadius: 999, background: nextPhase.color, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
@@ -2230,9 +2368,10 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
   );
 }
 
+const DEFAULT_PERMISSIONS = { canScheduleServices: true, canEditAppointments: true, canRegisterBikes: true, canModifyServices: true };
 const DEFAULT_EXT = {
-  s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
-  c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "" },
+  s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
+  c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
 };
 
 export default function App() {
@@ -2261,6 +2400,7 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem("cwb_team") || "null") || INITIAL_TEAM; } catch { return INITIAL_TEAM; }
   });
   const [showModal, setShowModal] = useState(false);
+  const [serviceModalDate, setServiceModalDate] = useState<string | undefined>(undefined);
   const [extendedData, setExtendedData] = useState(() => {
     try { return JSON.parse(localStorage.getItem("cwb_ext") || "null") || DEFAULT_EXT; } catch { return DEFAULT_EXT; }
   });
@@ -2272,13 +2412,14 @@ export default function App() {
     loadShopDataOnce().then(data => {
       if (!data) {
         // First time — migrate existing localStorage data to Firestore
-        saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift });
+        saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift, appointments });
       } else {
         // Restore from Firestore (cloud takes priority over cached localStorage)
         if (Array.isArray(data.team) && data.team.length) setTeam(data.team);
         if (data.extendedData && Object.keys(data.extendedData).length) setExtendedData(data.extendedData);
         if (Array.isArray(data.services)) setServices(data.services);
         if (Array.isArray(data.tasks)) setTasks(data.tasks);
+        if (Array.isArray(data.appointments)) setAppointments(data.appointments);
         if (data.shift && typeof data.shift === "object") setShift(data.shift);
         if (data.adminPassword) localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
         // Rebuild PIN cache
@@ -2305,7 +2446,7 @@ export default function App() {
       const updated = prev.map(p => p.id === id ? { ...p, name: data.name, role: data.role, initials } : p);
       // Update employee PIN cache for login
       setExtendedData(d => {
-        return { ...d, [id]: { salario: data.salario, direccion: data.direccion, documento: data.documento, eps: data.eps, horasSemana: data.horasSemana, pin: data.pin || "" } };
+        return { ...d, [id]: { salario: data.salario, direccion: data.direccion, documento: data.documento, eps: data.eps, horasSemana: data.horasSemana, pin: data.pin || "", permissions: data.permissions || DEFAULT_PERMISSIONS } };
       });
       return updated;
     });
@@ -2335,6 +2476,7 @@ export default function App() {
   }, [extendedData, team]);
 
   const addService      = (s: BikeService) => setServices(prev => [s, ...prev]);
+  const updateService   = (id: string, changes: Partial<BikeService>) => setServices(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
   const advancePhase = (id: string) => {
     setServices(prev => {
       const updated = prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s);
@@ -2364,6 +2506,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("cwb_appointments", JSON.stringify(appointments));
+    if (fbReady.current) saveShopData({ appointments });
   }, [appointments]);
 
   const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
@@ -2382,9 +2525,10 @@ export default function App() {
     <>
       <EmployeeDashboard
         session={session} team={team} shift={shift} setShift={setShift}
+        extendedData={extendedData}
         tasks={tasks} onToggleTask={toggleTask}
         appointments={appointments} onNewAppointment={() => setShowApptModal(true)}
-        services={services} onNewService={() => setShowNewService(true)}
+        services={services} onNewService={() => { setServiceModalDate(undefined); setShowNewService(true); }}
         onAdvancePhase={advancePhase}
         onLogout={logout}
       />
@@ -2393,6 +2537,7 @@ export default function App() {
           onClose={() => setShowApptModal(false)}
           onAdd={appt => { addAppointment(appt); setShowApptModal(false); }} />
       )}
+      {showNewService && <NewServiceModal team={team} initialDate={serviceModalDate} onClose={() => { setShowNewService(false); setServiceModalDate(undefined); }} onAdd={addService} />}
     </>
   );
 
@@ -2495,7 +2640,7 @@ export default function App() {
           {/* Contenido */}
           <div className="content-area">
             <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
-              {section === "servicios" && <ServiceSection services={services} onAdvancePhase={advancePhase} onNewService={() => setShowNewService(true)} />}
+              {section === "servicios" && <ServiceSection services={services} onAdvancePhase={advancePhase} onNewService={() => { setServiceModalDate(undefined); setShowNewService(true); }} onUpdateService={updateService} team={team} />}
               {section === "dash" && dashTab === "lista" && <DashLista lunchState={lunch} shiftState={shift} team={team} onRemove={removeMember} />}
               {section === "dash" && dashTab === "kanban" && <DashKanban />}
               {section === "dash" && dashTab === "timeline" && <DashTimeline />}
@@ -2504,7 +2649,7 @@ export default function App() {
               {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} />}
               {section === "perfil" && <ProfileSection team={team} extendedData={extendedData} onEditMember={updateMemberData} />}
               {section === "tareas" && <TasksSection tasks={tasks} team={team} onToggle={toggleTask} onAssign={() => setShowAssignTask(true)} />}
-              {section === "cal" && <CalendarSection tasks={tasks} appointments={appointments} setTasks={fn => setTasks(fn)} setAppointments={fn => setAppointments(fn)} team={team} />}
+              {section === "cal" && <CalendarSection tasks={tasks} appointments={appointments} services={services} setTasks={fn => setTasks(fn)} setAppointments={fn => setAppointments(fn)} onNewBikeService={date => { setServiceModalDate(date); setShowNewService(true); }} team={team} />}
               {section === "ops" && <OpsSection />}
             </div>
           </div>
@@ -2521,7 +2666,7 @@ export default function App() {
       </nav>
 
       {showModal && <MemberModal onClose={() => setShowModal(false)} onAdd={addMember} />}
-      {showNewService && <NewServiceModal onClose={() => setShowNewService(false)} onAdd={addService} />}
+      {showNewService && <NewServiceModal team={team} initialDate={serviceModalDate} onClose={() => { setShowNewService(false); setServiceModalDate(undefined); }} onAdd={addService} />}
       {showAssignTask && <AssignTaskModal team={team} onAdd={addTask} onClose={() => setShowAssignTask(false)} />}
       {showApptModal && <AppointmentModal team={team} initialDate={_fmtDate(new Date())} onClose={() => setShowApptModal(false)} onAdd={appt => { addAppointment(appt); setShowApptModal(false); }} />}
     </>
