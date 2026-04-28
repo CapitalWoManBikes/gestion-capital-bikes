@@ -21,6 +21,14 @@ interface BikeService {
   bikeDescription: string; date: string; phase: number;
   createdAt: string; notes: string;
 }
+interface AppTask {
+  id: string; title: string; assignedTo: string;
+  tag: string; done: boolean; createdAt: string;
+}
+interface Session {
+  type: "admin" | "employee";
+  id?: string; name?: string; role?: string;
+}
 
 function buildTrackingUrl(service: BikeService): string {
   const phase = PHASES.find(p => p.id === service.phase);
@@ -262,13 +270,14 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
   const [documento, setDocumento] = useState(extData.documento || "");
   const [eps, setEps] = useState(extData.eps || "");
   const [horasSemana, setHorasSemana] = useState(extData.horasSemana || "40");
+  const [employeePin, setEmployeePin] = useState(extData.pin || "");
   const roles = ["Mecánico", "Tienda/Caja", "Administración", "Reparto", "Otro"];
   const verifyPin = () => {
     if (pin === ADMIN_PIN) { setPinOk(true); setPinError(""); }
     else setPinError("PIN incorrecto. Solo administración puede editar.");
   };
   const save = () => {
-    onSave({ name, role, salario, direccion, documento, eps, horasSemana });
+    onSave({ name, role, salario, direccion, documento, eps, horasSemana, pin: employeePin });
     onClose();
   };
   const Field = ({ label, value, onChange, placeholder = "" }) => (
@@ -331,6 +340,8 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
               <Field label="EPS / SEGURO MÉDICO" value={eps} onChange={setEps} placeholder="Nombre de la EPS" />
               <Field label="SALARIO (€ o $ / mes)" value={salario} onChange={setSalario} placeholder="1.850" />
               <Field label="HORAS SEMANALES OBLIGATORIAS" value={horasSemana} onChange={setHorasSemana} placeholder="40" />
+              <hr className="sk-hr dashed" />
+              <Field label="PIN DE ACCESO COLABORADOR (4 dígitos)" value={employeePin} onChange={setEmployeePin} placeholder="1234" />
             </div>
             <div className="row gap-2" style={{ marginTop: 24, justifyContent: "flex-end" }}>
               <button className="action" onClick={onClose}>Cancelar</button>
@@ -1191,69 +1202,48 @@ function ProfileSection({ team = INITIAL_TEAM, extendedData = {}, onEditMember }
 }
 
 // ─── SECCIÓN 4: Tareas ───────────────────────────────────────────────────────
-function TasksSection() {
+function TasksSection({ tasks, team, onToggle, onAssign }: { tasks: AppTask[]; team: any[]; onToggle: (id: string) => void; onAssign: () => void }) {
   const [view, setView] = useState("lista");
-  const [tasks, setTasks] = useState([
-    { id: 1, title: "Montaje bici nueva #115", who: 0, tag: "TALLER", when: "15:00", done: false, day: "hoy" },
-    { id: 2, title: "Enviar factura #204", who: 1, tag: "TIENDA", when: "16:00", done: false, day: "hoy" },
-    { id: 3, title: "Cadena MTB #112", who: 0, tag: "TALLER", when: "13:20", done: true, day: "hoy" },
-    { id: 4, title: "Frenos #108", who: 0, tag: "TALLER", when: "10:05", done: true, day: "hoy" },
-    { id: 5, title: "Cierre mensual abril", who: 1, tag: "TIENDA", when: "10:00", done: false, day: "mañana" },
-    { id: 6, title: "Pedido Shimano Q2", who: 0, tag: "TALLER", when: "11:30", done: false, day: "mañana" },
-    { id: 7, title: "Nómina abril · 3 personas", who: 1, tag: "NÓMINA", when: "vie", done: false, day: "semana" },
-    { id: 8, title: "Curso e-bikes Sergio", who: 0, tag: "FORMAC.", when: "jue", done: false, day: "semana" },
-  ]);
-  const toggle = id => setTasks(t => t.map(x => x.id === id ? { ...x, done: !x.done } : x));
-  const projs = [
-    { name: "Campaña puesta a punto primavera", pct: 60, who: [0, 1], days: "6d" },
-    { name: "Rehacer web Capital Bikes", pct: 25, who: [1], days: "3 sem" },
-    { name: "Pedido Shimano Q2", pct: 85, who: [0], days: "2d" },
-    { name: "Curso e-bikes Sergio", pct: 10, who: [0], days: "~2m" },
-    { name: "Cierre mensual abril", pct: 40, who: [1], days: "4d" },
-  ];
-  const dayLabels = { hoy: "HOY · MARTES", mañana: "MAÑANA", semana: "ESTA SEMANA" };
+  const getMember = (id: string) => team.find(m => m.id === id);
+  const pending = tasks.filter(t => !t.done);
+  const done    = tasks.filter(t => t.done);
   return (
     <div className="fade-in" style={{ flex: 1 }}>
-      <div className="row gap-2" style={{ padding: "12px 18px", borderBottom: "1.4px dashed var(--line)" }}>
-        <button className={"action" + (view === "lista" ? " ink" : "")} onClick={() => setView("lista")}>Lista por día</button>
-        <button className={"action" + (view === "proyectos" ? " ink" : "")} onClick={() => setView("proyectos")}>Proyectos</button>
-      </div>
-      {view === "lista" ? (
-        <div>
-          {["hoy", "mañana", "semana"].map(day => (
-            <div key={day}>
-              <div className="sk-mono text-xs tracked muted" style={{ padding: "10px 16px 4px" }}>{dayLabels[day]}</div>
-              {tasks.filter(t => t.day === day).map(t => (
-                <div key={t.id} className="task-item">
-                  <div className="row gap-3">
-                    <Check on={t.done} onClick={() => toggle(t.id)} />
-                    <span className="text-sm" style={{ textDecoration: t.done ? "line-through" : "none", opacity: t.done ? .5 : 1 }}>{t.title}</span>
-                  </div>
-                  <div className="row gap-3">
-                    <span className="chip text-xs">{t.tag}</span>
-                    <Av p={INITIAL_TEAM[t.who] || INITIAL_TEAM[0]} size="xs" />
-                    <span className="sk-mono text-xs muted" style={{ width: 48, textAlign: "right" }}>{t.when}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+      <div className="row gap-2 between" style={{ padding: "12px 18px", borderBottom: "1.4px dashed var(--line)", flexWrap: "wrap" }}>
+        <div className="row gap-2">
+          <button className={"action" + (view === "todas" ? " ink" : "")} onClick={() => setView("todas")}>Todas</button>
+          <button className={"action" + (view === "hechas" ? " ink" : "")} onClick={() => setView("hechas")}>Completadas</button>
         </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, padding: 14 }}>
-          {projs.map((p, i) => (
-            <div key={i} className="sk-box p-3 stack gap-2">
-              <div className="row between"><div className="text-sm" style={{ fontWeight: 700 }}>{p.name}</div><span className="sk-mono text-xs muted">{p.days}</span></div>
-              <div className="prog-bar"><div className="prog-bar-fill" style={{ width: `${p.pct}%` }} /></div>
-              <div className="row between">
-                <div className="row gap-2">{p.who.map((wi, j) => <Av key={j} p={INITIAL_TEAM[wi] || INITIAL_TEAM[0]} size="xs" />)}</div>
-                <span className="sk-mono text-xs muted">{p.pct}%</span>
-              </div>
-            </div>
-          ))}
-          <div className="sk-box dashed p-3 row gap-2" style={{ justifyContent: "center" }}><Icon d={I.plus} size={15} /><span className="muted">añadir proyecto</span></div>
+        <button className="action accent" style={{ fontSize: 12 }} onClick={onAssign}>+ Asignar tarea</button>
+      </div>
+
+      {tasks.length === 0 && (
+        <div className="placeholder" style={{ margin: 20, borderRadius: 12, padding: 40, textAlign: "center" }}>
+          No hay tareas aún. Crea una con "Asignar tarea".
         </div>
       )}
+
+      <div style={{ padding: "8px 0" }}>
+        {(view === "todas" ? pending : done).map(t => {
+          const member = getMember(t.assignedTo);
+          return (
+            <div key={t.id} className="task-item">
+              <div className="row gap-3">
+                <div onClick={() => onToggle(t.id)} style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${t.done ? "var(--accent)" : "var(--line)"}`, background: t.done ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: "#fff", fontSize: 12 }}>{t.done && "✓"}</div>
+                <span className="text-sm" style={{ textDecoration: t.done ? "line-through" : "none", opacity: t.done ? 0.5 : 1 }}>{t.title}</span>
+              </div>
+              <div className="row gap-2">
+                <span className="chip text-xs">{t.tag}</span>
+                {member && <Av p={member} size="xs" />}
+                {member && <span className="sk-mono text-xs muted">{member.name}</span>}
+              </div>
+            </div>
+          );
+        })}
+        {view === "todas" && pending.length === 0 && tasks.length > 0 && (
+          <div style={{ textAlign: "center", padding: 32, color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: 12 }}>✅ Todas las tareas completadas</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1617,6 +1607,126 @@ function ServiceSection({ services, onAdvancePhase, onNewService }: { services: 
   );
 }
 
+// ─── Modal asignar tarea ──────────────────────────────────────────────────────
+function AssignTaskModal({ team, onAdd, onClose }: { team: any[]; onAdd: (t: AppTask) => void; onClose: () => void }) {
+  const [title, setTitle] = useState("");
+  const [assignedTo, setAssignedTo] = useState(team[0]?.id || "");
+  const [tag, setTag] = useState("GENERAL");
+  const tags = ["GENERAL", "TALLER", "TIENDA", "LIMPIEZA", "CAJA", "PEDIDO"];
+  const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
+  const lbl: React.CSSProperties = { fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 4 };
+  const handleAdd = () => {
+    if (!title.trim() || !assignedTo) return;
+    onAdd({ id: Date.now().toString(36), title: title.trim(), assignedTo, tag, done: false, createdAt: new Date().toISOString() });
+    onClose();
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#0008", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "var(--paper-2)", borderRadius: 14, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 4px 32px #0006" }}>
+        <div className="sk-mono" style={{ fontSize: 12, letterSpacing: 2, color: "var(--ink-3)", marginBottom: 18 }}>ASIGNAR TAREA</div>
+        <label style={lbl}>Descripción de la tarea *</label>
+        <input style={inp} value={title} onChange={e => setTitle(e.target.value)} placeholder="Ej: Lavar herramienta del taller" autoFocus />
+        <label style={lbl}>Asignar a</label>
+        <select style={{ ...inp, marginBottom: 10 }} value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+          {team.map(m => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
+        </select>
+        <label style={lbl}>Categoría</label>
+        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, marginBottom: 16 }}>
+          {tags.map(t => <button key={t} className={"action" + (tag === t ? " accent" : "")} style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setTag(t)}>{t}</button>)}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!title.trim()}>Asignar tarea</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dashboard del colaborador ────────────────────────────────────────────────
+function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, services, onNewService, onLogout }: {
+  session: Session; team: any[]; shift: any; setShift: any;
+  tasks: AppTask[]; onToggleTask: (id: string) => void;
+  services: BikeService[]; onNewService: () => void; onLogout: () => void;
+}) {
+  const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
+  const myTasks = tasks.filter(t => t.assignedTo === session.id);
+  const isIn = !!shift[session.id!];
+  const phName = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
+  const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column" }}>
+      <style>{CSS}</style>
+      {/* Header */}
+      <div style={{ background: "var(--paper-2)", borderBottom: "1.4px solid var(--line)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Logo height={28} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{me.name}</div>
+            <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>{me.role}</div>
+          </div>
+        </div>
+        <button className="action" style={{ fontSize: 12 }} onClick={onLogout}>Salir</button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 20, maxWidth: 600, margin: "0 auto", width: "100%" }}>
+        {/* Turno */}
+        <div style={{ background: isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `1.4px solid ${isIn ? "var(--accent)" : "var(--line)"}`, borderRadius: 14, padding: 20, textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>{isIn ? "🟢" : "⚪"}</div>
+          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{isIn ? "Estás en turno" : "Fuera de turno"}</div>
+          <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 14 }}>
+            {isIn ? "Haz clic para marcar tu salida" : "Haz clic para marcar tu entrada"}
+          </div>
+          <button
+            className={"action" + (isIn ? "" : " ink")}
+            style={{ fontSize: 14, padding: "10px 32px", borderRadius: 999, background: isIn ? "#e05555" : "var(--accent)", color: "#fff", border: "none", cursor: "pointer" }}
+            onClick={() => setShift((s: any) => ({ ...s, [session.id!]: !s[session.id!] }))}
+          >
+            {isIn ? "🔴 Salir de turno" : "🟢 Entrar a turno"}
+          </button>
+        </div>
+
+        {/* Mis tareas */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Mis tareas {myTasks.length > 0 && <span className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 400 }}>({myTasks.filter(t => !t.done).length} pendientes)</span>}</div>
+          {myTasks.length === 0 ? (
+            <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No tienes tareas asignadas por ahora.</div>
+          ) : myTasks.map(t => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: "var(--paper-2)", borderRadius: 10, marginBottom: 8, border: "1.3px solid var(--line)" }}>
+              <div onClick={() => onToggleTask(t.id)} style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${t.done ? "var(--accent)" : "var(--line)"}`, background: t.done ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: "#fff", fontSize: 13 }}>
+                {t.done && "✓"}
+              </div>
+              <span style={{ flex: 1, fontSize: 14, textDecoration: t.done ? "line-through" : "none", opacity: t.done ? 0.5 : 1 }}>{t.title}</span>
+              <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 999, padding: "2px 8px" }}>{t.tag}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Servicios */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Servicios activos</div>
+            <button className="action ink" style={{ fontSize: 12 }} onClick={onNewService}>+ Nuevo servicio</button>
+          </div>
+          {services.filter(s => s.phase < 4).length === 0 ? (
+            <div className="placeholder" style={{ borderRadius: 10, padding: 24, textAlign: "center", fontSize: 13 }}>No hay servicios activos.</div>
+          ) : services.filter(s => s.phase < 4).map(s => (
+            <div key={s.id} style={{ background: "var(--paper-2)", border: "1.3px solid var(--line)", borderRadius: 10, padding: 14, marginBottom: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{s.clientName}</div>
+              <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
+              <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
+                {PHASES.map(ph => <div key={ph.id} style={{ flex: 1, height: 4, borderRadius: 2, background: s.phase >= ph.id ? ph.color : "var(--line)" }} />)}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: phColor(s.phase), fontWeight: 600 }}>{phName(s.phase)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STORED_PASSWORD_KEY = "cwb_admin_pwd";
 const getAdminPassword = () => localStorage.getItem(STORED_PASSWORD_KEY) || "capital2024";
 
@@ -1699,19 +1809,32 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function LoginScreen({ onLogin }: { onLogin: () => void }) {
+function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
   const [pwd, setPwd] = useState("");
   const [error, setError] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
 
   const handleLogin = () => {
     if (pwd === getAdminPassword()) {
-      sessionStorage.setItem("cwb_admin", "1");
-      onLogin();
-    } else {
-      setError(true);
-      setPwd("");
+      const s: Session = { type: "admin" };
+      sessionStorage.setItem("cwb_session", JSON.stringify(s));
+      onLogin(s);
+      return;
     }
+    // Check employee PINs
+    try {
+      const empCache: Array<{ id: string; name: string; role: string; pin: string }> =
+        JSON.parse(localStorage.getItem("cwb_emp_cache") || "[]");
+      const emp = empCache.find(e => e.pin && e.pin === pwd);
+      if (emp) {
+        const s: Session = { type: "employee", id: emp.id, name: emp.name, role: emp.role };
+        sessionStorage.setItem("cwb_session", JSON.stringify(s));
+        onLogin(s);
+        return;
+      }
+    } catch {}
+    setError(true);
+    setPwd("");
   };
 
   return (
@@ -1757,11 +1880,17 @@ export default function App() {
     } catch { /* invalid param, show login */ }
   }
 
-  const [isLoggedIn, setIsLoggedIn] = useState(() => sessionStorage.getItem("cwb_admin") === "1");
+  const [session, setSession] = useState<Session | null>(() => {
+    try { return JSON.parse(sessionStorage.getItem("cwb_session") || "null"); } catch { return null; }
+  });
   const [section, setSection] = useState("dash");
   const [showNewService, setShowNewService] = useState(false);
+  const [showAssignTask, setShowAssignTask] = useState(false);
   const [services, setServices] = useState<BikeService[]>(() => {
     try { return JSON.parse(localStorage.getItem("cwb_services") || "[]"); } catch { return []; }
+  });
+  const [tasks, setTasks] = useState<AppTask[]>(() => {
+    try { return JSON.parse(localStorage.getItem("cwb_tasks") || "[]"); } catch { return []; }
   });
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
@@ -1784,19 +1913,40 @@ export default function App() {
   };
   const updateMemberData = (id, data) => {
     const initials = data.name.trim().split(" ").map(w => w[0] || "").join("").toUpperCase().slice(0, 2);
-    setTeam(t => t.map(p => p.id === id ? { ...p, name: data.name, role: data.role, initials } : p));
-    setExtendedData(d => ({ ...d, [id]: { salario: data.salario, direccion: data.direccion, documento: data.documento, eps: data.eps, horasSemana: data.horasSemana } }));
+    setTeam(prev => {
+      const updated = prev.map(p => p.id === id ? { ...p, name: data.name, role: data.role, initials } : p);
+      // Update employee PIN cache for login
+      setExtendedData(d => {
+        const newExt = { ...d, [id]: { salario: data.salario, direccion: data.direccion, documento: data.documento, eps: data.eps, horasSemana: data.horasSemana, pin: data.pin || "" } };
+        const cache = updated.map(m => ({ id: m.id, name: m.name, role: m.role, pin: newExt[m.id]?.pin || "" }));
+        localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
+        return newExt;
+      });
+      return updated;
+    });
   };
 
   useEffect(() => { localStorage.setItem("cwb_services", JSON.stringify(services)); }, [services]);
+  useEffect(() => { localStorage.setItem("cwb_tasks", JSON.stringify(tasks)); }, [tasks]);
 
-  const addService = (s: BikeService) => setServices(prev => [s, ...prev]);
+  const addService   = (s: BikeService) => setServices(prev => [s, ...prev]);
   const advancePhase = (id: string) => setServices(prev => prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s));
+  const addTask      = (t: AppTask) => setTasks(prev => [t, ...prev]);
+  const toggleTask   = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  const logout = () => { sessionStorage.removeItem("cwb_session"); setSession(null); };
 
   const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
   const breadcrumbs: Record<string, string> = { dash: "HOY", servicios: "BICICLETAS · SERVICIO", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "SEMANA", cal: "CALENDARIO", ops: "PLANTILLAS" };
 
-  if (!isLoggedIn) return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+  if (!session) return <LoginScreen onLogin={(s) => setSession(s)} />;
+  if (session.type === "employee") return (
+    <EmployeeDashboard
+      session={session} team={team} shift={shift} setShift={setShift}
+      tasks={tasks} onToggleTask={toggleTask}
+      services={services} onNewService={() => setShowNewService(true)}
+      onLogout={logout}
+    />
+  );
 
   return (
     <>
@@ -1897,7 +2047,7 @@ export default function App() {
               {section === "lunch" && <LunchSection lunchState={lunch} setLunchState={setLunch} shiftState={shift} team={team} />}
               {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} />}
               {section === "perfil" && <ProfileSection team={team} extendedData={extendedData} onEditMember={updateMemberData} />}
-              {section === "tareas" && <TasksSection />}
+              {section === "tareas" && <TasksSection tasks={tasks} team={team} onToggle={toggleTask} onAssign={() => setShowAssignTask(true)} />}
               {section === "cal" && <CalendarSection />}
               {section === "ops" && <OpsSection />}
             </div>
@@ -1916,6 +2066,7 @@ export default function App() {
 
       {showModal && <MemberModal onClose={() => setShowModal(false)} onAdd={addMember} />}
       {showNewService && <NewServiceModal onClose={() => setShowNewService(false)} onAdd={addService} />}
+      {showAssignTask && <AssignTaskModal team={team} onAdd={addTask} onClose={() => setShowAssignTask(false)} />}
     </>
   );
 }
