@@ -257,6 +257,16 @@ function MemberModal({ onClose, onAdd }) {
   );
 }
 
+function Field({ label, value, onChange, placeholder = "" }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div>
+      <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 4 }}>{label}</div>
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        style={{ width: "100%", padding: "7px 10px", border: "1.4px solid var(--line)", borderRadius: 8, fontFamily: "var(--hand)", fontSize: 14, background: "var(--paper)", outline: "none" }} />
+    </div>
+  );
+}
+
 // ─── Modal edición privada (solo admin) ──────────────────────────────────────
 function EditMemberModal({ person, extData = {}, onClose, onSave }) {
   const ADMIN_PIN = "1234";
@@ -280,16 +290,6 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
     onSave({ name, role, salario, direccion, documento, eps, horasSemana, pin: employeePin });
     onClose();
   };
-  const Field = ({ label, value, onChange, placeholder = "" }) => (
-    <div>
-      <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 4 }}>{label}</div>
-      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        style={{
-          width: "100%", padding: "7px 10px", border: "1.4px solid var(--line)", borderRadius: 8,
-          fontFamily: "var(--hand)", fontSize: 14, background: "var(--paper)", outline: "none"
-        }} />
-    </div>
-  );
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="sk-box p-5" style={{ width: 440, background: "var(--paper)", maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
@@ -1872,14 +1872,6 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
 }
 
 export default function App() {
-  const trackParam = new URLSearchParams(window.location.search).get("track");
-  if (trackParam) {
-    try {
-      const data = JSON.parse(decodeURIComponent(atob(trackParam)));
-      return <CustomerTrackingView data={data} />;
-    } catch { /* invalid param, show login */ }
-  }
-
   const [session, setSession] = useState<Session | null>(() => {
     try { return JSON.parse(sessionStorage.getItem("cwb_session") || "null"); } catch { return null; }
   });
@@ -1955,6 +1947,14 @@ export default function App() {
 
   const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
   const breadcrumbs: Record<string, string> = { dash: "HOY", servicios: "BICICLETAS · SERVICIO", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "SEMANA", cal: "CALENDARIO", ops: "PLANTILLAS" };
+
+  const trackParam = new URLSearchParams(window.location.search).get("track");
+  if (trackParam) {
+    try {
+      const data = JSON.parse(decodeURIComponent(atob(trackParam)));
+      return <CustomerTrackingView data={data} />;
+    } catch {}
+  }
 
   if (!session) return <LoginScreen onLogin={(s) => setSession(s)} />;
   if (session.type === "employee") return (
