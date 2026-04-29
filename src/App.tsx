@@ -21,6 +21,7 @@ interface BikeService {
   id: string; clientName: string; clientEmail: string;
   bikeDescription: string; date: string; phase: number;
   createdAt: string; notes: string;
+  serviceType?: string;
   startTime?: string; endTime?: string; technicianId?: string;
   paymentStatus?: "pendiente" | "pagado" | "adelanto";
   paymentAmount?: number;
@@ -1676,6 +1677,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
   const [bikeDescription, setBikeDescription] = useState("");
   const [date, setDate] = useState(initialDate || new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
+  const [serviceType, setServiceType] = useState("");
   const [technicianId, setTechnicianId] = useState(team[0]?.id || "");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:30");
@@ -1693,6 +1695,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
       id, clientName: clientName.trim(), clientEmail: clientEmail.trim(),
       bikeDescription: bikeDescription.trim(), date, phase: 0,
       createdAt: new Date().toISOString(), notes,
+      serviceType: serviceType || undefined,
       startTime, endTime,
       technicianId: technicianId || undefined,
       paymentStatus,
@@ -1728,6 +1731,11 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
         <input style={inp} type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="juan@email.com" />
         <label style={lbl}>Descripción de la bici *</label>
         <input style={inp} value={bikeDescription} onChange={e => setBikeDescription(e.target.value)} placeholder="Trek Marlin azul 2022" />
+        <label style={lbl}>Servicio solicitado</label>
+        <select style={{ ...inp, marginBottom: 10 }} value={serviceType} onChange={e => setServiceType(e.target.value)}>
+          <option value="">Seleccionar servicio…</option>
+          {SERVICES_CATALOG.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
             <label style={lbl}>Fecha de ingreso</label>
@@ -1777,7 +1785,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
 }
 
 // ─── Sección de servicios (admin) ─────────────────────────────────────────────
-function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateService = () => {}, team = [] }: { services: BikeService[]; onAdvancePhase: (id: string) => void; onNewService: () => void; onUpdateService?: (id: string, changes: Partial<BikeService>) => void; team?: any[] }) {
+function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateService = () => {}, onDeleteService = () => {}, team = [] }: { services: BikeService[]; onAdvancePhase: (id: string) => void; onNewService: () => void; onUpdateService?: (id: string, changes: Partial<BikeService>) => void; onDeleteService?: (id: string) => void; team?: any[] }) {
   const [sending, setSending] = useState<string | null>(null);
   const [copied, setCopied]   = useState<string | null>(null);
   const [editingAmounts, setEditingAmounts] = useState<Record<string, string>>({});
@@ -1843,9 +1851,12 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{s.clientName}</div>
               <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
+              {s.serviceType && <div style={{ fontSize: 12, color: "#6c1f6e", marginTop: 2 }}>🛠 {s.serviceType}</div>}
               <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>📅 {s.date}{s.startTime ? ` · ${s.startTime}${s.endTime ? `–${s.endTime}` : ""}` : ""}</div>
               {s.technicianId && team.find(p => p.id === s.technicianId) && <div className="sk-mono" style={{ fontSize: 10, color: "#6c1f6e", marginTop: 1 }}>🔧 {team.find(p => p.id === s.technicianId)?.name}</div>}
             </div>
+            <button onClick={() => { if (window.confirm(`¿Eliminar el servicio de ${s.clientName}?`)) onDeleteService(s.id); }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 18, padding: "2px 4px", lineHeight: 1, flexShrink: 0 }} title="Eliminar">🗑</button>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--paper-2)", border: `1.5px solid ${phColor(s.phase)}`, borderRadius: 999, padding: "4px 12px", fontSize: 13, whiteSpace: "nowrap" as const }}>
               {phIcon(s.phase)} <span style={{ color: phColor(s.phase), fontWeight: 600 }}>{phName(s.phase)}</span>
             </span>
@@ -2506,7 +2517,7 @@ export default function App() {
     loadShopDataOnce().then(data => {
       if (!data) {
         // First time — migrate existing localStorage data to Firestore
-        saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift, appointments });
+        saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift, appointments, empLunch });
       } else {
         // Restore from Firestore (cloud takes priority over cached localStorage)
         if (Array.isArray(data.team) && data.team.length) setTeam(data.team);
@@ -2515,6 +2526,7 @@ export default function App() {
         if (Array.isArray(data.tasks)) setTasks(data.tasks);
         if (Array.isArray(data.appointments)) setAppointments(data.appointments);
         if (data.shift && typeof data.shift === "object") setShift(data.shift);
+        if (data.empLunch && typeof data.empLunch === "object") setEmpLunch(data.empLunch);
         if (data.adminPassword) localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
         // Rebuild PIN cache
         const extD: any = data.extendedData || {};
@@ -2575,6 +2587,7 @@ export default function App() {
 
   const addService      = (s: BikeService) => setServices(prev => [s, ...prev]);
   const updateService   = (id: string, changes: Partial<BikeService>) => setServices(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
+  const deleteService   = (id: string) => setServices(prev => prev.filter(s => s.id !== id));
   const advancePhase = (id: string) => {
     setServices(prev => {
       const updated = prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s);
@@ -2692,21 +2705,22 @@ export default function App() {
         {/* Main */}
         <div className="main-content">
           {/* Banners */}
-          {lunch && shift.s && (
+          {team.some(p => empLunch[p.id] && shift[p.id]) && (
             <div className="notif-banner">
               <Icon d={I.lunch} size={18} />
               <div>
-                <div className="sk-title" style={{ fontSize: 15, color: "#fff" }}>Sergio está en almuerzo · no molestar hasta las 14:28</div>
-                <div className="sk-mono" style={{ fontSize: 11, opacity: .9 }}>te avisaré cuando vuelva</div>
+                <div className="sk-title" style={{ fontSize: 15, color: "#fff" }}>
+                  {team.filter(p => empLunch[p.id] && shift[p.id]).map(p => p.name).join(", ")} en almuerzo
+                </div>
+                <div className="sk-mono" style={{ fontSize: 11, opacity: .9 }}>marcaron inicio de almuerzo desde su dispositivo</div>
               </div>
-              <button className="action" style={{ marginLeft: "auto", color: "#fff", borderColor: "rgba(255,255,255,.5)" }} onClick={() => setLunch(false)}>× cerrar</button>
             </div>
           )}
-          {(shift.s || shift.c) && !lunch && (
+          {team.some(p => shift[p.id]) && !team.some(p => empLunch[p.id] && shift[p.id]) && (
             <div className="notif-banner in-banner">
               <Icon d={I.in} size={18} />
               <div className="sk-mono" style={{ fontSize: 12, color: "#fff" }}>
-                {shift.s && shift.c ? "Sergio y Cindy están en turno" : shift.s ? "Sergio está en turno" : "Cindy está en turno"}
+                {(() => { const names = team.filter(p => shift[p.id]).map(p => p.name); return names.join(" y ") + (names.length === 1 ? " está en turno" : " están en turno"); })()}
                 {" · "}turno activo
               </div>
             </div>
@@ -2743,7 +2757,7 @@ export default function App() {
           {/* Contenido */}
           <div className="content-area">
             <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
-              {section === "servicios" && <ServiceSection services={services} onAdvancePhase={advancePhase} onNewService={() => { setServiceModalDate(undefined); setShowNewService(true); }} onUpdateService={updateService} team={team} />}
+              {section === "servicios" && <ServiceSection services={services} onAdvancePhase={advancePhase} onNewService={() => { setServiceModalDate(undefined); setShowNewService(true); }} onUpdateService={updateService} onDeleteService={deleteService} team={team} />}
               {section === "dash" && dashTab === "lista" && <DashLista lunchState={lunch} shiftState={shift} team={team} onRemove={removeMember} />}
               {section === "dash" && dashTab === "kanban" && <DashKanban />}
               {section === "dash" && dashTab === "timeline" && <DashTimeline />}
