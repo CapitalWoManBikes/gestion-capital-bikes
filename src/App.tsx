@@ -2408,23 +2408,30 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
+function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session) => void; loading?: boolean }) {
   const [pwd, setPwd] = useState("");
   const [error, setError] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
 
   const handleLogin = () => {
+    if (loading) return;
     if (pwd === getAdminPassword()) {
       const s: Session = { type: "admin" };
       sessionStorage.setItem("cwb_session", JSON.stringify(s));
       onLogin(s);
       return;
     }
-    // Check employee PINs
+    // Check employee PINs — try cache first, then fall back to cwb_ext + cwb_team directly
     try {
       const empCache: Array<{ id: string; name: string; role: string; pin: string }> =
         JSON.parse(localStorage.getItem("cwb_emp_cache") || "[]");
-      const emp = empCache.find(e => e.pin && e.pin === pwd);
+      let emp = empCache.find(e => e.pin && e.pin === pwd);
+      if (!emp) {
+        const extD: any = JSON.parse(localStorage.getItem("cwb_ext") || "null") || {};
+        const teamD: any[] = JSON.parse(localStorage.getItem("cwb_team") || "null") || [];
+        const m = teamD.find((t: any) => extD[t.id]?.pin && extD[t.id].pin === pwd);
+        if (m) emp = { id: m.id, name: m.name, role: m.role, pin: extD[m.id].pin };
+      }
       if (emp) {
         const s: Session = { type: "employee", id: emp.id, name: emp.name, role: emp.role };
         sessionStorage.setItem("cwb_session", JSON.stringify(s));
@@ -2442,28 +2449,34 @@ function LoginScreen({ onLogin }: { onLogin: (session: Session) => void }) {
       <div style={{ background: "#221222", borderRadius: 16, padding: 40, width: "100%", maxWidth: 360, textAlign: "center", boxShadow: "0 4px 32px #0006" }}>
         <Logo height={48} />
         <div style={{ marginTop: 24, marginBottom: 16, color: "#c8a8c8", fontFamily: "monospace", fontSize: 12, letterSpacing: 3 }}>ACCESO ADMINISTRACIÓN</div>
-        <input
-          type="password"
-          value={pwd}
-          onChange={e => { setPwd(e.target.value); setError(false); }}
-          onKeyDown={e => e.key === "Enter" && handleLogin()}
-          placeholder="Contraseña"
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: error ? "1px solid #e05555" : "1px solid #4a2a4a", background: "#2d1a2d", color: "#e8d5e8", fontSize: 14, marginBottom: 8, boxSizing: "border-box" as const }}
-          autoFocus
-        />
-        {error && <div style={{ color: "#e05555", fontSize: 12, marginBottom: 8 }}>Contraseña incorrecta</div>}
-        <button
-          onClick={handleLogin}
-          style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: "#6c1f6e", color: "#fff", border: "none", fontFamily: "monospace", fontSize: 13, letterSpacing: 1, cursor: "pointer", marginTop: 4 }}
-        >
-          ENTRAR
-        </button>
-        <button
-          onClick={() => setShowChangePwd(true)}
-          style={{ marginTop: 16, background: "none", border: "none", color: "#6a4a6a", fontSize: 12, cursor: "pointer", fontFamily: "monospace", textDecoration: "underline" }}
-        >
-          Cambiar contraseña
-        </button>
+        {loading ? (
+          <div style={{ color: "#6a4a6a", fontFamily: "monospace", fontSize: 12, padding: "20px 0", letterSpacing: 2 }}>CARGANDO...</div>
+        ) : (
+          <>
+            <input
+              type="password"
+              value={pwd}
+              onChange={e => { setPwd(e.target.value); setError(false); }}
+              onKeyDown={e => e.key === "Enter" && handleLogin()}
+              placeholder="Contraseña / PIN"
+              style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: error ? "1px solid #e05555" : "1px solid #4a2a4a", background: "#2d1a2d", color: "#e8d5e8", fontSize: 14, marginBottom: 8, boxSizing: "border-box" as const }}
+              autoFocus
+            />
+            {error && <div style={{ color: "#e05555", fontSize: 12, marginBottom: 8 }}>Contraseña o PIN incorrecto</div>}
+            <button
+              onClick={handleLogin}
+              style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: "#6c1f6e", color: "#fff", border: "none", fontFamily: "monospace", fontSize: 13, letterSpacing: 1, cursor: "pointer", marginTop: 4 }}
+            >
+              ENTRAR
+            </button>
+            <button
+              onClick={() => setShowChangePwd(true)}
+              style={{ marginTop: 16, background: "none", border: "none", color: "#6a4a6a", fontSize: 12, cursor: "pointer", fontFamily: "monospace", textDecoration: "underline" }}
+            >
+              Cambiar contraseña
+            </button>
+          </>
+        )}
       </div>
       {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
     </div>
@@ -2512,12 +2525,16 @@ export default function App() {
 
   // ── Firebase sync ─────────────────────────────────────────────────────────
   const fbReady = useRef(false);
+  const [fbLoading, setFbLoading] = useState(true);
 
   useEffect(() => {
     loadShopDataOnce().then(data => {
       if (!data) {
         // First time — migrate existing localStorage data to Firestore
         saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift, appointments, empLunch });
+        // Rebuild PIN cache from localStorage data
+        const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
+        localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
       } else {
         // Restore from Firestore (cloud takes priority over cached localStorage)
         if (Array.isArray(data.team) && data.team.length) setTeam(data.team);
@@ -2528,13 +2545,14 @@ export default function App() {
         if (data.shift && typeof data.shift === "object") setShift(data.shift);
         if (data.empLunch && typeof data.empLunch === "object") setEmpLunch(data.empLunch);
         if (data.adminPassword) localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
-        // Rebuild PIN cache
+        // Rebuild PIN cache from Firestore data
         const extD: any = data.extendedData || {};
         const cache = (data.team || []).map((m: any) => ({ id: m.id, name: m.name, role: m.role, pin: extD[m.id]?.pin || "" }));
         localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
       }
       fbReady.current = true;
-    }).catch(() => { fbReady.current = true; });
+      setFbLoading(false);
+    }).catch(() => { fbReady.current = true; setFbLoading(false); });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addMember = ({ name, role, initials }) => {
@@ -2631,7 +2649,7 @@ export default function App() {
     } catch {}
   }
 
-  if (!session) return <LoginScreen onLogin={(s) => setSession(s)} />;
+  if (!session) return <LoginScreen onLogin={(s) => setSession(s)} loading={fbLoading} />;
   if (session.type === "employee") return (
     <>
       <EmployeeDashboard
