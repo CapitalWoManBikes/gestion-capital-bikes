@@ -1442,17 +1442,19 @@ function TasksSection({ tasks, team, onToggle, onAssign }: { tasks: AppTask[]; t
 }
 
 // ─── SECCIÓN 5: Calendario ───────────────────────────────────────────────────
-function CalendarSection({ tasks, appointments, services, setTasks, setAppointments, onNewBikeService, team }: {
+function CalendarSection({ tasks, appointments, services, setTasks, setAppointments, onNewBikeService, onUpdateService, team }: {
   tasks: AppTask[]; appointments: Appointment[]; services: BikeService[];
   setTasks: (fn: (prev: AppTask[]) => AppTask[]) => void;
   setAppointments: (fn: (prev: Appointment[]) => Appointment[]) => void;
   onNewBikeService: (date: string) => void;
+  onUpdateService?: (id: string, changes: Partial<BikeService>) => void;
   team: any[];
 }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showApptModal, setShowApptModal] = useState(false);
   const [preDate, setPreDate] = useState<string | undefined>(undefined);
+  const [editingSvc, setEditingSvc] = useState<BikeService | null>(null);
 
   const DAY_NAMES = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
   const MONTH_NAMES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -1522,8 +1524,13 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
                 const phInfo = PHASES.find(ph => ph.id === s.phase);
                 const urg = urgencyInfo(s.neededByDate);
                 return (
-                  <div key={s.id} className="cal-event ev-bici" title={`${s.clientName} · ${s.bikeDescription}`}
-                    style={urg && (urg.color === "#c0392b") ? { borderColor: "#c0392b", background: "rgba(192,57,43,.08)" } : undefined}>
+                  <div key={s.id} className="cal-event ev-bici"
+                    title={`${s.clientName} · ${s.bikeDescription}`}
+                    onClick={() => onUpdateService && setEditingSvc(s)}
+                    style={{
+                      ...(urg && urg.color === "#c0392b" ? { borderColor: "#c0392b", background: "rgba(192,57,43,.08)" } : {}),
+                      cursor: onUpdateService ? "pointer" : "default",
+                    }}>
                     {s.startTime && <div className="sk-mono text-xs" style={{ color: "#6c1f6e" }}>{s.startTime}{s.endTime ? `–${s.endTime}` : ""}</div>}
                     <div style={{ fontSize: 11, fontWeight: 700 }}>{s.clientName}</div>
                     <div style={{ fontSize: 10, color: "#6c1f6e" }}>{s.bikeDescription}</div>
@@ -1532,6 +1539,7 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
                     {urg && <div style={{ fontSize: 10, color: urg.color, fontWeight: 600 }}>{urg.label}</div>}
                     {s.paymentStatus === "pagado" && <div style={{ fontSize: 10, color: "#2e7d32" }}>✅ Pagado</div>}
                     {s.paymentStatus === "adelanto" && <div style={{ fontSize: 10, color: "#6c1f6e" }}>📤 {s.paymentAmount ? `$${s.paymentAmount.toLocaleString()}` : "Abono"}</div>}
+                    {onUpdateService && <div style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 2 }}>✏️ editar</div>}
                   </div>
                 );
               })}
@@ -1601,6 +1609,107 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
         <AppointmentModal team={team} initialDate={preDate} onClose={() => setShowApptModal(false)}
           onAdd={appt => setAppointments(as => [appt, ...as])} />
       )}
+
+      {/* Modal edición de servicio desde el calendario */}
+      {editingSvc && onUpdateService && (
+        <EditServiceCalModal
+          service={editingSvc}
+          team={team}
+          onClose={() => setEditingSvc(null)}
+          onSave={(id, changes) => { onUpdateService(id, changes); setEditingSvc(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditServiceCalModal({ service, team, onClose, onSave }: {
+  service: BikeService;
+  team: any[];
+  onClose: () => void;
+  onSave: (id: string, changes: Partial<BikeService>) => void;
+}) {
+  const [bikeDescription, setBikeDescription] = useState(service.bikeDescription);
+  const [serviceType, setServiceType] = useState(service.serviceType || "");
+  const [notes, setNotes] = useState(service.notes || "");
+  const [neededByDate, setNeededByDate] = useState(service.neededByDate || "");
+  const [technicianId, setTechnicianId] = useState(service.technicianId || "");
+  const [startTime, setStartTime] = useState(service.startTime || "");
+  const [endTime, setEndTime] = useState(service.endTime || "");
+
+  const inp: React.CSSProperties = { width: "100%", padding: "8px 11px", borderRadius: 7, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
+  const lbl: React.CSSProperties = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 3 };
+
+  const handleSave = () => {
+    if (!bikeDescription.trim()) return;
+    onSave(service.id, {
+      bikeDescription: bikeDescription.trim(),
+      serviceType: serviceType || undefined,
+      notes,
+      neededByDate: neededByDate || undefined,
+      technicianId: technicianId || undefined,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
+    });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#0008", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "var(--paper-2)", borderRadius: 14, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 4px 32px #0006", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div>
+            <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: 1 }}>EDITAR SERVICIO</div>
+            <div style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{service.clientName}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 20, lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+
+        <label style={lbl}>Descripción de la bici *</label>
+        <textarea rows={2} style={{ ...inp, resize: "vertical" as const }} value={bikeDescription} onChange={e => setBikeDescription(e.target.value)} autoFocus />
+
+        <label style={lbl}>Servicio solicitado</label>
+        <select style={{ ...inp }} value={serviceType} onChange={e => setServiceType(e.target.value)}>
+          <option value="">Sin especificar</option>
+          {SERVICES_CATALOG.map(g => (
+            <optgroup key={g.category} label={g.category}>
+              {g.items.map(item => (
+                <option key={item.code} value={`${item.code} - ${item.name}`}>
+                  {item.name} · ${item.price.toLocaleString("es-CO")}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+
+        <label style={lbl}>Técnico asignado</label>
+        <select style={{ ...inp }} value={technicianId} onChange={e => setTechnicianId(e.target.value)}>
+          <option value="">Sin asignar</option>
+          {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={lbl}>Hora inicio</label>
+            <input style={inp} type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>Hora fin</label>
+            <input style={inp} type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+          </div>
+        </div>
+
+        <label style={lbl}>¿Cuándo necesita la bici el cliente?</label>
+        <input style={inp} type="date" value={neededByDate} onChange={e => setNeededByDate(e.target.value)} />
+
+        <label style={lbl}>Notas</label>
+        <textarea rows={2} style={{ ...inp, resize: "vertical" as const }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones adicionales…" />
+
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button className="action ink" onClick={handleSave} style={{ flex: 2 }} disabled={!bikeDescription.trim()}>Guardar cambios</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2381,7 +2490,7 @@ function AppointmentModal({ team, initialDate, onAdd, onClose }: { team: any[]; 
 }
 
 // ─── Dashboard del colaborador ────────────────────────────────────────────────
-function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout, extendedData = {}, setTasks, setAppointments, onNewBikeService, empLunch = {}, setEmpLunch }: {
+function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout, extendedData = {}, setTasks, setAppointments, onNewBikeService, empLunch = {}, setEmpLunch, onUpdateService }: {
   session: Session; team: any[]; shift: any; setShift: any;
   tasks: AppTask[]; onToggleTask: (id: string) => void;
   appointments: Appointment[]; onNewAppointment: () => void;
@@ -2392,6 +2501,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   onNewBikeService?: (date: string) => void;
   empLunch?: Record<string, boolean>;
   setEmpLunch?: (fn: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
+  onUpdateService?: (id: string, changes: Partial<BikeService>) => void;
 }) {
   const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
   const todayStr = _fmtDate(new Date());
@@ -2445,6 +2555,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
             setAppointments={setAppointments ?? ((_fn: any) => {})}
             onNewBikeService={onNewBikeService ?? (() => {})}
             team={team}
+            onUpdateService={onUpdateService}
           />
         </div>
       )}
@@ -2982,6 +3093,7 @@ export default function App() {
         onNewBikeService={date => { setServiceModalDate(date); setShowNewService(true); }}
         empLunch={empLunch}
         setEmpLunch={fn => setEmpLunch(fn)}
+        onUpdateService={updateService}
       />
       {showApptModal && (
         <AppointmentModal team={team} initialDate={_fmtDate(new Date())}
@@ -3101,7 +3213,7 @@ export default function App() {
               {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} />}
               {section === "perfil" && <ProfileSection team={team} extendedData={extendedData} onEditMember={updateMemberData} />}
               {section === "tareas" && <TasksSection tasks={tasks} team={team} onToggle={toggleTask} onAssign={() => setShowAssignTask(true)} />}
-              {section === "cal" && <CalendarSection tasks={tasks} appointments={appointments} services={services} setTasks={fn => setTasks(fn)} setAppointments={fn => setAppointments(fn)} onNewBikeService={date => { setServiceModalDate(date); setShowNewService(true); }} team={team} />}
+              {section === "cal" && <CalendarSection tasks={tasks} appointments={appointments} services={services} setTasks={fn => setTasks(fn)} setAppointments={fn => setAppointments(fn)} onNewBikeService={date => { setServiceModalDate(date); setShowNewService(true); }} team={team} onUpdateService={updateService} />}
               {section === "ops" && <OpsSection />}
             </div>
           </div>
