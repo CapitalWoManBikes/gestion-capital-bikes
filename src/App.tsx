@@ -62,11 +62,96 @@ const _addDays = (n: number): string => {
   return _fmtDate(d);
 };
 
-const SERVICES_CATALOG = [
-  "Puesta a punto básica", "Puesta a punto completa", "Cambio cadena",
-  "Cambio cadena + piñones", "Revisión frenos", "Revisión completa",
-  "Revisión completa e-bike", "Montaje bici nueva", "Cambio rueda", "Otro servicio",
+const SERVICES_CATALOG: { category: string; items: { code: string; name: string; price: number }[] }[] = [
+  {
+    category: "🔧 Mantenimiento Profesional",
+    items: [
+      { code: "SERMANT001", name: "Mant Pro Ruta Sin Disco",                            price: 130000 },
+      { code: "SERMANT002", name: "Mant Pro Ruta Con Disco",                            price: 140000 },
+      { code: "SERMANT003", name: "Mant Pro MTB Sin Disco",                             price: 130000 },
+      { code: "SERMANT004", name: "Mant Pro MTB Con Disco",                             price: 140000 },
+      { code: "SERMANT005", name: "Mant Pro Fija",                                      price: 80000  },
+      { code: "SERMANT006", name: "Mant Pro Coaster",                                   price: 90000  },
+      { code: "SERMANT007", name: "Mant Pro Libre Con Frenos",                          price: 100000 },
+      { code: "SERMANT008", name: "Mant Pro Gravel Sin Disco",                          price: 130000 },
+      { code: "SERMANT009", name: "Mant Pro Gravel Con Disco",                          price: 140000 },
+      { code: "SERMANT010", name: "Mant Pro Cargo Con Disco",                           price: 160000 },
+      { code: "SERMANT011", name: "Mant Pro Cargo Sin Disco",                           price: 150000 },
+      { code: "SERMANT012", name: "Mant Pro Ruta · Actualización Sistema Electrónico",  price: 50000  },
+    ],
+  },
+  {
+    category: "🔄 Mantenimiento de Seguimiento",
+    items: [
+      { code: "MANTSEG001", name: "Mant Seg Ruta Sin Disco",    price: 60000 },
+      { code: "MANTSEG002", name: "Mant Seg Ruta Con Disco",    price: 70000 },
+      { code: "MANTSEG003", name: "Mant Seg MTB Sin Disco",     price: 60000 },
+      { code: "MANTSEG004", name: "Mant Seg MTB Con Disco",     price: 70000 },
+      { code: "MANTSEG005", name: "Mant Seg Fija",              price: 40000 },
+      { code: "MANTSEG006", name: "Mant Seg Coaster",           price: 40000 },
+      { code: "MANTSEG007", name: "Mant Seg Libre Con Frenos",  price: 50000 },
+      { code: "MANTSEG008", name: "Mant Seg Gravel Con Disco",  price: 70000 },
+      { code: "MANTSEG009", name: "Mant Seg Gravel Sin Disco",  price: 60000 },
+      { code: "MANTSEG010", name: "Mant Seg Cargo Con Disco",   price: 80000 },
+      { code: "MANTSEG011", name: "Mant Seg Cargo Sin Disco",   price: 70000 },
+    ],
+  },
+  {
+    category: "⚡ Performance",
+    items: [
+      { code: "MANTPER001", name: "Performance Fija",          price: 65000 },
+      { code: "MANTPER002", name: "Performance Ruta",          price: 90000 },
+      { code: "MANTPER003", name: "Performance Libre",         price: 70000 },
+      { code: "MANTPER004", name: "Performance MTB / Gravel",  price: 95000 },
+    ],
+  },
+  {
+    category: "🚀 Alistamiento Express",
+    items: [
+      { code: "ALEX001", name: "Alistamiento Express Fija",         price: 20000 },
+      { code: "ALEX002", name: "Alistamiento Express Ruta",         price: 30000 },
+      { code: "ALEX003", name: "Alistamiento Express Libre",        price: 25000 },
+      { code: "ALEX004", name: "Alistamiento Express MTB / Gravel", price: 35000 },
+    ],
+  },
+  {
+    category: "🔩 Componentes",
+    items: [
+      { code: "MANT001",  name: "Mant Rueda",                  price: 20000  },
+      { code: "MANT002",  name: "Mant Centro",                 price: 25000  },
+      { code: "MANT003",  name: "Mant Cajas de Dirección",     price: 20000  },
+      { code: "MANT004",  name: "Mant Pedales",                price: 35000  },
+      { code: "MANT005",  name: "Mant Núcleo",                 price: 35000  },
+      { code: "MANT009",  name: "Mant Tensor",                 price: 50000  },
+      { code: "MANT0010", name: "Instalación Kit SRAM",        price: 180000 },
+      { code: "MANT0011", name: "Mant Mordazas Hidráulicas",   price: 70000  },
+    ],
+  },
+  {
+    category: "💪 Ergonomía",
+    items: [
+      { code: "MANT006", name: "Mant Ergo",    price: 120000 },
+      { code: "MANT008", name: "Mant Ergo X2", price: 200000 },
+    ],
+  },
+  {
+    category: "🌊 Suspensión",
+    items: [
+      { code: "PREVSUS001", name: "Preventivo Suspensión",               price: 40000  },
+      { code: "PREVSUS002", name: "Mant Suspensión Completo",            price: 150000 },
+      { code: "PREVSUS003", name: "Mant Suspensión Hidráulica",          price: 50000  },
+    ],
+  },
+  {
+    category: "🛠 Reparaciones Especiales",
+    items: [
+      { code: "REP005", name: "Reparación Ruedas Carbono", price: 330000 },
+    ],
+  },
 ];
+
+// Listado plano para búsquedas rápidas
+const SERVICES_FLAT = SERVICES_CATALOG.flatMap(g => g.items);
 
 function buildTrackingUrl(service: BikeService): string {
   const phase = PHASES.find(p => p.id === service.phase);
@@ -1851,7 +1936,15 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
         <label style={lbl}>Servicio solicitado</label>
         <select style={{ ...inp, marginBottom: 10 }} value={serviceType} onChange={e => setServiceType(e.target.value)}>
           <option value="">Seleccionar servicio…</option>
-          {SERVICES_CATALOG.map(s => <option key={s} value={s}>{s}</option>)}
+          {SERVICES_CATALOG.map(g => (
+            <optgroup key={g.category} label={g.category}>
+              {g.items.map(item => (
+                <option key={item.code} value={`${item.code} - ${item.name}`}>
+                  {item.name} · ${item.price.toLocaleString("es-CO")}
+                </option>
+              ))}
+            </optgroup>
+          ))}
         </select>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
@@ -2241,7 +2334,15 @@ function AppointmentModal({ team, initialDate, onAdd, onClose }: { team: any[]; 
           <div className="field-label">Tipo de servicio *</div>
           <select className="field-input" value={service} onChange={e => setService(e.target.value)}>
             <option value="">Selecciona un servicio…</option>
-            {SERVICES_CATALOG.map(s => <option key={s} value={s}>{s}</option>)}
+            {SERVICES_CATALOG.map(g => (
+              <optgroup key={g.category} label={g.category}>
+                {g.items.map(item => (
+                  <option key={item.code} value={`${item.code} - ${item.name}`}>
+                    {item.name} · ${item.price.toLocaleString("es-CO")}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -2474,11 +2575,19 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
             <div style={{ fontWeight: 700, fontSize: 15 }}>Catálogo de servicios</div>
             <span className="sk-mono text-xs muted">Toca para agendar</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-            {SERVICES_CATALOG.map((s, i) => (
-              <div key={i} className="maint-card" onClick={onNewService}>
-                <div className="serv-tag" style={{ marginBottom: 6, fontSize: 10 }}>SERV.</div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{s}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {SERVICES_CATALOG.map(g => (
+              <div key={g.category}>
+                <div style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, marginBottom: 6 }}>{g.category}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+                  {g.items.map(item => (
+                    <div key={item.code} className="maint-card" onClick={onNewService} style={{ padding: "10px 12px" }}>
+                      <div className="serv-tag" style={{ marginBottom: 4, fontSize: 9 }}>{item.code}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{item.name}</div>
+                      <div style={{ fontSize: 11, color: "#6c1f6e", marginTop: 3, fontWeight: 700 }}>${item.price.toLocaleString("es-CO")}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
