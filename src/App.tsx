@@ -2080,7 +2080,7 @@ function AppointmentModal({ team, initialDate, onAdd, onClose }: { team: any[]; 
 }
 
 // ─── Dashboard del colaborador ────────────────────────────────────────────────
-function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout, extendedData = {}, setTasks, setAppointments, onNewBikeService }: {
+function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask, appointments, onNewAppointment, services, onNewService, onAdvancePhase, onLogout, extendedData = {}, setTasks, setAppointments, onNewBikeService, empLunch = {}, setEmpLunch }: {
   session: Session; team: any[]; shift: any; setShift: any;
   tasks: AppTask[]; onToggleTask: (id: string) => void;
   appointments: Appointment[]; onNewAppointment: () => void;
