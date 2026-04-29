@@ -17,6 +17,11 @@ const PHASES = [
   { id: 4, name: "Lista para recoger", icon: "✅", color: "#4caf50", msg: "¡Tu bici está lista! Puedes pasar a recogerla." },
 ];
 
+interface DiagnosticUpdate {
+  id: string; date: string;
+  estado: string; hallazgos: string; problemas: string; recomendaciones: string;
+  partes: string[];
+}
 interface BikeService {
   id: string; clientName: string; clientEmail: string;
   bikeDescription: string; date: string; phase: number;
@@ -26,6 +31,9 @@ interface BikeService {
   paymentStatus?: "pendiente" | "pagado" | "adelanto";
   paymentAmount?: number;
   deliveryStatus?: "en_taller" | "lista" | "entregada";
+  neededByDate?: string;
+  completedAt?: string;
+  diagnosticUpdates?: DiagnosticUpdate[];
 }
 interface AppTask {
   id: string; title: string; assignedTo: string;
@@ -62,8 +70,27 @@ const SERVICES_CATALOG = [
 
 function buildTrackingUrl(service: BikeService): string {
   const phase = PHASES.find(p => p.id === service.phase);
-  const data = { clientName: service.clientName, bikeDescription: service.bikeDescription, phase: service.phase, phaseName: phase?.name || "", phaseMsg: phase?.msg || "", phaseIcon: phase?.icon || "", phaseColor: phase?.color || "#6c1f6e", date: service.date, id: service.id };
+  const data = {
+    clientName: service.clientName, bikeDescription: service.bikeDescription,
+    phase: service.phase, phaseName: phase?.name || "", phaseMsg: phase?.msg || "",
+    phaseIcon: phase?.icon || "", phaseColor: phase?.color || "#6c1f6e",
+    date: service.date, id: service.id,
+    neededByDate: service.neededByDate,
+    completedAt: service.completedAt,
+    diagnosticUpdates: service.diagnosticUpdates || [],
+  };
   return `${window.location.origin}${window.location.pathname}?track=${btoa(encodeURIComponent(JSON.stringify(data)))}`;
+}
+
+function urgencyInfo(neededByDate: string | undefined): { label: string; color: string; bg: string } | null {
+  if (!neededByDate) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const needed = new Date(neededByDate + "T00:00:00");
+  const diff = Math.ceil((needed.getTime() - today.getTime()) / 86400000);
+  if (diff < 0)  return { label: `🔴 Vencida hace ${Math.abs(diff)}d`, color: "#c0392b", bg: "rgba(192,57,43,.12)" };
+  if (diff <= 1) return { label: diff === 0 ? "🔴 Necesaria hoy" : "🔴 Necesaria mañana", color: "#c0392b", bg: "rgba(192,57,43,.12)" };
+  if (diff <= 3) return { label: `⚠️ Necesaria en ${diff}d`, color: "#e8a020", bg: "rgba(232,160,32,.12)" };
+  return { label: `📅 Necesaria en ${diff}d`, color: "#4caf50", bg: "rgba(76,175,80,.1)" };
 }
 
 // ─── Colores de marca Capital Wo-Man Bikes ───────────────────────────────────
@@ -1408,13 +1435,16 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
               {dayBikes.map(s => {
                 const tech = team.find(p => p.id === s.technicianId);
                 const phInfo = PHASES.find(ph => ph.id === s.phase);
+                const urg = urgencyInfo(s.neededByDate);
                 return (
-                  <div key={s.id} className="cal-event ev-bici" title={`${s.clientName} · ${s.bikeDescription}`}>
+                  <div key={s.id} className="cal-event ev-bici" title={`${s.clientName} · ${s.bikeDescription}`}
+                    style={urg && (urg.color === "#c0392b") ? { borderColor: "#c0392b", background: "rgba(192,57,43,.08)" } : undefined}>
                     {s.startTime && <div className="sk-mono text-xs" style={{ color: "#6c1f6e" }}>{s.startTime}{s.endTime ? `–${s.endTime}` : ""}</div>}
                     <div style={{ fontSize: 11, fontWeight: 700 }}>{s.clientName}</div>
                     <div style={{ fontSize: 10, color: "#6c1f6e" }}>{s.bikeDescription}</div>
                     <div style={{ fontSize: 10, color: "#9c4a9e" }}>{s.phase === 0 ? "📋 Recibida" : `${phInfo?.icon} ${phInfo?.name}`}</div>
                     {tech && <div style={{ fontSize: 10, color: "#9c4a9e" }}>🔧 {tech.name}</div>}
+                    {urg && <div style={{ fontSize: 10, color: urg.color, fontWeight: 600 }}>{urg.label}</div>}
                     {s.paymentStatus === "pagado" && <div style={{ fontSize: 10, color: "#2e7d32" }}>✅ Pagado</div>}
                     {s.paymentStatus === "adelanto" && <div style={{ fontSize: 10, color: "#6c1f6e" }}>📤 {s.paymentAmount ? `$${s.paymentAmount.toLocaleString()}` : "Abono"}</div>}
                   </div>
@@ -1623,20 +1653,40 @@ const DASH_TABS = [
 // ─── Vista pública de seguimiento para clientes ───────────────────────────────
 function CustomerTrackingView({ data }: { data: any }) {
   const cur = data.phase as number;
+  const diags: DiagnosticUpdate[] = data.diagnosticUpdates || [];
+  const urgency = urgencyInfo(data.neededByDate);
+  const completedAt: string | undefined = data.completedAt;
+  const daysSinceCompleted = completedAt
+    ? Math.floor((Date.now() - new Date(completedAt).getTime()) / 86400000)
+    : null;
+
   return (
-    <div style={{ minHeight: "100vh", background: "#1a0d1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div style={{ minHeight: "100vh", background: "#1a0d1a", display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px" }}>
       <style>{CSS}</style>
       <div style={{ width: "100%", maxWidth: 480, background: "#221222", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 32px #0008" }}>
+        {/* Header morado con logo blanco */}
         <div style={{ background: "#6c1f6e", padding: "20px 24px", textAlign: "center" }}>
-          <Logo height={36} />
+          <img src={LOGO_SRC} alt="Capital Wo-Man Bikes" style={{ height: 36, display: "block", margin: "0 auto", objectFit: "contain", filter: "brightness(0) invert(1)" }} />
           <div style={{ color: "#e8d5e8", fontFamily: "monospace", fontSize: 11, letterSpacing: 2, marginTop: 10 }}>SEGUIMIENTO DE SERVICIO</div>
         </div>
+
         <div style={{ padding: 24 }}>
-          <div style={{ marginBottom: 20 }}>
+          {/* Cliente + bici */}
+          <div style={{ marginBottom: 16 }}>
             <div style={{ color: "#c8a8c8", fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>CLIENTE</div>
             <div style={{ color: "#e8d5e8", fontSize: 18, fontWeight: 700, marginTop: 4 }}>{data.clientName}</div>
             <div style={{ color: "#a080a0", fontSize: 13, marginTop: 2 }}>{data.bikeDescription}</div>
           </div>
+
+          {/* Fecha límite con urgencia */}
+          {urgency && (
+            <div style={{ background: urgency.bg, border: `1px solid ${urgency.color}`, borderRadius: 8, padding: "8px 12px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: urgency.color, fontSize: 13, fontWeight: 600 }}>{urgency.label}</span>
+              <span style={{ color: "#a080a0", fontSize: 12 }}>— fecha requerida por el cliente</span>
+            </div>
+          )}
+
+          {/* Fases */}
           {PHASES.map((ph, i) => {
             const done = cur > ph.id, active = cur === ph.id;
             return (
@@ -1654,14 +1704,78 @@ function CustomerTrackingView({ data }: { data: any }) {
               </div>
             );
           })}
+
+          {/* Lista si está lista */}
           {cur === 4 && (
             <div style={{ background: "#1a3a1a", border: "1px solid #4caf50", borderRadius: 10, padding: 16, textAlign: "center", marginTop: 16 }}>
               <div style={{ fontSize: 28 }}>🎉</div>
-              <div style={{ color: "#4caf50", fontWeight: 700, fontSize: 16, marginTop: 6 }}>¡Tu bici está lista!</div>
-              <div style={{ color: "#a0c0a0", fontSize: 13, marginTop: 4 }}>Puedes pasar a recogerla en nuestro taller.</div>
+              <div style={{ color: "#4caf50", fontWeight: 700, fontSize: 16, marginTop: 6 }}>¡Tu bici está lista para entrega!</div>
+              <div style={{ color: "#a0c0a0", fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
+                Puedes acercarte a recogerla en nuestro taller en el horario habitual.
+              </div>
+              <div style={{ color: "#a0c0a0", fontSize: 12, marginTop: 10, padding: "10px 12px", background: "#0d1f0d", borderRadius: 8, lineHeight: 1.6, textAlign: "left" }}>
+                ⏳ Tienes <strong style={{ color: "#4caf50" }}>5 días calendario</strong> para recogerla.<br />
+                Pasado este tiempo se generará un cobro por bodegaje de <strong style={{ color: "#4caf50" }}>$4.000 COP/día</strong> según nuestras políticas.
+              </div>
+              {daysSinceCompleted !== null && daysSinceCompleted > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12, color: daysSinceCompleted >= 5 ? "#e05555" : "#e8a020", fontWeight: 600 }}>
+                  {daysSinceCompleted >= 5
+                    ? `🔴 Han transcurrido ${daysSinceCompleted} días desde que quedó lista.`
+                    : `⚠️ Han transcurrido ${daysSinceCompleted} día${daysSinceCompleted > 1 ? "s" : ""} desde que quedó lista.`}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Diagnósticos técnicos */}
+          {diags.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ color: "#c8a8c8", fontFamily: "monospace", fontSize: 10, letterSpacing: 1, marginBottom: 12 }}>DIAGNÓSTICO TÉCNICO</div>
+              {[...diags].reverse().map(d => (
+                <div key={d.id} style={{ background: "#1a1222", border: "1px solid #4a2a4a", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                  <div style={{ color: "#c8a8c8", fontFamily: "monospace", fontSize: 10, marginBottom: 8 }}>
+                    {new Date(d.date).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
+                  </div>
+                  {d.estado && (
+                    <div style={{ marginBottom: 6 }}>
+                      <span style={{ color: "#9c4a9e", fontSize: 11, fontFamily: "monospace", letterSpacing: 0.5 }}>ESTADO GENERAL · </span>
+                      <span style={{ color: "#e8d5e8", fontSize: 13 }}>{d.estado}</span>
+                    </div>
+                  )}
+                  {d.hallazgos && (
+                    <div style={{ marginBottom: 6 }}>
+                      <span style={{ color: "#9c4a9e", fontSize: 11, fontFamily: "monospace", letterSpacing: 0.5 }}>HALLAZGOS · </span>
+                      <span style={{ color: "#c8a8c8", fontSize: 13 }}>{d.hallazgos}</span>
+                    </div>
+                  )}
+                  {d.problemas && (
+                    <div style={{ marginBottom: 6 }}>
+                      <span style={{ color: "#c0392b", fontSize: 11, fontFamily: "monospace", letterSpacing: 0.5 }}>PROBLEMAS · </span>
+                      <span style={{ color: "#c8a8c8", fontSize: 13 }}>{d.problemas}</span>
+                    </div>
+                  )}
+                  {d.recomendaciones && (
+                    <div style={{ marginBottom: d.partes.length > 0 ? 10 : 0 }}>
+                      <span style={{ color: "#5cc8e8", fontSize: 11, fontFamily: "monospace", letterSpacing: 0.5 }}>RECOMENDACIONES · </span>
+                      <span style={{ color: "#c8a8c8", fontSize: 13 }}>{d.recomendaciones}</span>
+                    </div>
+                  )}
+                  {d.partes.length > 0 && (
+                    <div style={{ background: "#221222", borderRadius: 8, padding: "10px 12px", marginTop: 8 }}>
+                      <div style={{ color: "#e8a020", fontFamily: "monospace", fontSize: 10, letterSpacing: 1, marginBottom: 6 }}>🔩 REPUESTOS RECOMENDADOS</div>
+                      {d.partes.map((p, i) => (
+                        <div key={i} style={{ color: "#e8d5e8", fontSize: 13, padding: "3px 0", borderBottom: i < d.partes.length - 1 ? "1px solid #3a1a3a" : "none" }}>
+                          · {p}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
+
         <div style={{ padding: "12px 24px", borderTop: "1px solid #3a1a3a", textAlign: "center" }}>
           <div style={{ color: "#5a3a5a", fontFamily: "monospace", fontSize: 10, letterSpacing: 1 }}>CAPITAL WO-MAN BIKES</div>
         </div>
@@ -1676,6 +1790,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
   const [clientEmail, setClientEmail] = useState("");
   const [bikeDescription, setBikeDescription] = useState("");
   const [date, setDate] = useState(initialDate || new Date().toISOString().split("T")[0]);
+  const [neededByDate, setNeededByDate] = useState("");
   const [notes, setNotes] = useState("");
   const [serviceType, setServiceType] = useState("");
   const [technicianId, setTechnicianId] = useState(team[0]?.id || "");
@@ -1701,6 +1816,8 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
       paymentStatus,
       paymentAmount: paymentStatus === "adelanto" ? (parseFloat(paymentAmount) || 0) : undefined,
       deliveryStatus: "en_taller",
+      neededByDate: neededByDate || undefined,
+      diagnosticUpdates: [],
     };
     onAdd(newService);
     const trackingLink = buildTrackingUrl(newService);
@@ -1712,7 +1829,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
         bike_description: newService.bikeDescription,
         phase_name: "Recibida",
         phase_icon: "📋",
-        phase_message: "Hemos recibido tu bicicleta. Pronto comenzaremos el servicio y te notificaremos cada avance.",
+        phase_message: `Hemos recibido tu bicicleta correctamente.\n\nEl proceso de revisión y mantenimiento puede tomar entre 1 y 5 días hábiles, dependiendo del estado de la bicicleta, disponibilidad de repuestos y autorización del cliente.\n\nPuedes consultar el estado actual de tu bicicleta en el siguiente enlace:`,
         tracking_link: trackingLink,
       }, EMAILJS_PUBLIC_KEY);
     } catch (err: any) {
@@ -1749,6 +1866,8 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
             </select>
           </div>
         </div>
+        <label style={lbl}>¿Cuándo necesita la bici el cliente? (opcional)</label>
+        <input style={inp} type="date" value={neededByDate} onChange={e => setNeededByDate(e.target.value)} />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 0 }}>
           <div>
             <label style={lbl}>Hora inicio</label>
@@ -1785,10 +1904,34 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
 }
 
 // ─── Sección de servicios (admin) ─────────────────────────────────────────────
+type DiagDraft = { estado: string; hallazgos: string; problemas: string; recomendaciones: string; partesRaw: string };
+const EMPTY_DIAG: DiagDraft = { estado: "", hallazgos: "", problemas: "", recomendaciones: "", partesRaw: "" };
+
 function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateService = () => {}, onDeleteService = () => {}, team = [] }: { services: BikeService[]; onAdvancePhase: (id: string) => void; onNewService: () => void; onUpdateService?: (id: string, changes: Partial<BikeService>) => void; onDeleteService?: (id: string) => void; team?: any[] }) {
   const [sending, setSending] = useState<string | null>(null);
   const [copied, setCopied]   = useState<string | null>(null);
   const [editingAmounts, setEditingAmounts] = useState<Record<string, string>>({});
+  const [showDiag, setShowDiag] = useState<Record<string, boolean>>({});
+  const [diagDraft, setDiagDraft] = useState<Record<string, DiagDraft>>({});
+  const toggleDiag = (id: string) => setShowDiag(p => ({ ...p, [id]: !p[id] }));
+  const setDraft = (id: string, field: keyof DiagDraft, val: string) =>
+    setDiagDraft(p => ({ ...p, [id]: { ...(p[id] || EMPTY_DIAG), [field]: val } }));
+  const saveDiag = (s: BikeService) => {
+    const draft = diagDraft[s.id] || EMPTY_DIAG;
+    if (!draft.estado && !draft.hallazgos && !draft.problemas && !draft.recomendaciones && !draft.partesRaw) return;
+    const entry: DiagnosticUpdate = {
+      id: Date.now().toString(36),
+      date: new Date().toISOString(),
+      estado: draft.estado.trim(),
+      hallazgos: draft.hallazgos.trim(),
+      problemas: draft.problemas.trim(),
+      recomendaciones: draft.recomendaciones.trim(),
+      partes: draft.partesRaw.split("\n").map(p => p.trim()).filter(Boolean),
+    };
+    onUpdateService(s.id, { diagnosticUpdates: [...(s.diagnosticUpdates || []), entry] });
+    setDiagDraft(p => ({ ...p, [s.id]: EMPTY_DIAG }));
+    setShowDiag(p => ({ ...p, [s.id]: false }));
+  };
   const fmtPago = (s: BikeService) => {
     if (s.paymentStatus === "pagado") return "✅ Pagado";
     if (s.paymentStatus === "adelanto") return s.paymentAmount ? `📤 Abono: $${s.paymentAmount.toLocaleString()}` : "📤 Adelanto (sin monto)";
@@ -1848,12 +1991,13 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
       {active.map(s => (
         <div key={s.id} style={{ background: "var(--paper)", border: "1.4px solid var(--line)", borderRadius: 12, padding: 16, marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{s.clientName}</div>
               <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{s.bikeDescription}</div>
               {s.serviceType && <div style={{ fontSize: 12, color: "#6c1f6e", marginTop: 2 }}>🛠 {s.serviceType}</div>}
               <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>📅 {s.date}{s.startTime ? ` · ${s.startTime}${s.endTime ? `–${s.endTime}` : ""}` : ""}</div>
               {s.technicianId && team.find(p => p.id === s.technicianId) && <div className="sk-mono" style={{ fontSize: 10, color: "#6c1f6e", marginTop: 1 }}>🔧 {team.find(p => p.id === s.technicianId)?.name}</div>}
+              {(() => { const u = urgencyInfo(s.neededByDate); return u ? <div style={{ display: "inline-block", marginTop: 4, fontSize: 11, padding: "2px 8px", borderRadius: 999, background: u.bg, color: u.color, fontWeight: 600, border: `1px solid ${u.color}` }}>{u.label}</div> : null; })()}
             </div>
             <button onClick={() => { if (window.confirm(`¿Eliminar el servicio de ${s.clientName}?`)) onDeleteService(s.id); }}
               style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)", fontSize: 18, padding: "2px 4px", lineHeight: 1, flexShrink: 0 }} title="Eliminar">🗑</button>
@@ -1878,6 +2022,62 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
             </button>
           </div>
           {s.notes && <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-3)", fontStyle: "italic" }}>📝 {s.notes}</div>}
+
+          {/* Panel de diagnóstico técnico */}
+          <div style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+            {/* Historial de diagnósticos existentes */}
+            {(s.diagnosticUpdates || []).length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: 1, marginBottom: 6 }}>DIAGNÓSTICO TÉCNICO</div>
+                {[...(s.diagnosticUpdates || [])].reverse().map(d => (
+                  <div key={d.id} style={{ background: "var(--paper-2)", border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 6 }}>
+                    <div className="sk-mono" style={{ fontSize: 9, color: "var(--ink-3)", marginBottom: 4 }}>
+                      {new Date(d.date).toLocaleDateString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                    {d.estado && <div style={{ fontSize: 12, marginBottom: 2 }}><span style={{ color: "#9c4a9e", fontWeight: 600 }}>Estado: </span>{d.estado}</div>}
+                    {d.hallazgos && <div style={{ fontSize: 12, marginBottom: 2 }}><span style={{ color: "#e8a020", fontWeight: 600 }}>Hallazgos: </span>{d.hallazgos}</div>}
+                    {d.problemas && <div style={{ fontSize: 12, marginBottom: 2 }}><span style={{ color: "#c0392b", fontWeight: 600 }}>Problemas: </span>{d.problemas}</div>}
+                    {d.recomendaciones && <div style={{ fontSize: 12, marginBottom: d.partes.length > 0 ? 6 : 0 }}><span style={{ color: "#5cc8e8", fontWeight: 600 }}>Recomendaciones: </span>{d.recomendaciones}</div>}
+                    {d.partes.length > 0 && (
+                      <div style={{ background: "rgba(232,160,32,.08)", border: "1px solid #e8a020", borderRadius: 6, padding: "6px 10px" }}>
+                        <div style={{ fontSize: 10, color: "#e8a020", fontFamily: "var(--mono)", letterSpacing: 0.5, marginBottom: 4 }}>🔩 REPUESTOS RECOMENDADOS</div>
+                        {d.partes.map((p, i) => <div key={i} style={{ fontSize: 12 }}>· {p}</div>)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Formulario nuevo diagnóstico */}
+            <button
+              className="action"
+              style={{ fontSize: 11, marginBottom: showDiag[s.id] ? 8 : 0 }}
+              onClick={() => toggleDiag(s.id)}
+            >
+              {showDiag[s.id] ? "✕ Cancelar diagnóstico" : "🔬 Agregar diagnóstico"}
+            </button>
+            {showDiag[s.id] && (() => {
+              const draft = diagDraft[s.id] || EMPTY_DIAG;
+              const fi: React.CSSProperties = { width: "100%", padding: "7px 10px", borderRadius: 7, border: "1.2px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 12, fontFamily: "inherit", boxSizing: "border-box", marginBottom: 6, resize: "vertical" as const };
+              const la: React.CSSProperties = { fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 3 };
+              return (
+                <div style={{ background: "var(--paper-2)", border: "1px dashed var(--line)", borderRadius: 8, padding: 12 }}>
+                  <label style={la}>Estado general</label>
+                  <textarea rows={2} style={fi} value={draft.estado} onChange={e => setDraft(s.id, "estado", e.target.value)} placeholder="La bicicleta llegó con..." />
+                  <label style={la}>Hallazgos</label>
+                  <textarea rows={2} style={fi} value={draft.hallazgos} onChange={e => setDraft(s.id, "hallazgos", e.target.value)} placeholder="Se detectó desgaste en..." />
+                  <label style={la}>Problemas detectados</label>
+                  <textarea rows={2} style={fi} value={draft.problemas} onChange={e => setDraft(s.id, "problemas", e.target.value)} placeholder="Cadena con desgaste crítico..." />
+                  <label style={la}>Recomendaciones</label>
+                  <textarea rows={2} style={fi} value={draft.recomendaciones} onChange={e => setDraft(s.id, "recomendaciones", e.target.value)} placeholder="Se recomienda cambio inmediato de..." />
+                  <label style={la}>Repuestos recomendados (uno por línea)</label>
+                  <textarea rows={3} style={fi} value={draft.partesRaw} onChange={e => setDraft(s.id, "partesRaw", e.target.value)} placeholder={"Pastillas de freno\nCadena\nCassette"} />
+                  <button className="action ink" style={{ fontSize: 12, width: "100%" }} onClick={() => saveDiag(s)}>Guardar diagnóstico</button>
+                </div>
+              );
+            })()}
+          </div>
+
           <div style={{ marginTop: 10, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: s.paymentStatus === "adelanto" ? 8 : 0 }}>
               <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)", marginRight: 2 }}>PAGO:</span>
@@ -2608,10 +2808,18 @@ export default function App() {
   const deleteService   = (id: string) => setServices(prev => prev.filter(s => s.id !== id));
   const advancePhase = (id: string) => {
     setServices(prev => {
-      const updated = prev.map(s => s.id === id && s.phase < 4 ? { ...s, phase: s.phase + 1 } : s);
+      const now = new Date().toISOString();
+      const updated = prev.map(s => {
+        if (s.id !== id || s.phase >= 4) return s;
+        const newPhase = s.phase + 1;
+        return { ...s, phase: newPhase, ...(newPhase === 4 ? { completedAt: now } : {}) };
+      });
       const svc = updated.find(s => s.id === id);
       if (svc && svc.phase > 0) {
         const ph = PHASES.find(p => p.id === svc.phase)!;
+        const phaseMessage = svc.phase === 4
+          ? `Tu bicicleta ya está lista para entrega 🚴‍♂️\n\nPuedes acercarte a recogerla en nuestro taller en el horario habitual.\n\nTe recordamos que cuentas con 5 días calendario para recogerla. Pasado este tiempo, se empezará a generar un cobro por bodegaje de $4.000 COP por día, según nuestras políticas.\n\nSi tienes alguna duda o necesitas coordinar la entrega, puedes escribirnos.`
+          : ph.msg;
         emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
           email: svc.clientEmail,
           client_email: svc.clientEmail,
@@ -2619,7 +2827,7 @@ export default function App() {
           bike_description: svc.bikeDescription,
           phase_name: ph.name,
           phase_icon: ph.icon,
-          phase_message: ph.msg,
+          phase_message: phaseMessage,
           tracking_link: buildTrackingUrl(svc),
         }, EMAILJS_PUBLIC_KEY).catch((err: any) => {
           alert(`❌ No se pudo enviar el email al cliente.\n\nDetalle: ${err?.text || err?.message || err}`);
