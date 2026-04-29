@@ -1651,6 +1651,7 @@ function EditServiceCalModal({ service, team, onClose, onSave }: {
       startTime: startTime || undefined,
       endTime: endTime || undefined,
     });
+    onClose();
   };
 
   return (
@@ -1706,8 +1707,8 @@ function EditServiceCalModal({ service, team, onClose, onSave }: {
         <textarea rows={2} style={{ ...inp, resize: "vertical" as const }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Observaciones adicionales…" />
 
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
-          <button className="action ink" onClick={handleSave} style={{ flex: 2 }} disabled={!bikeDescription.trim()}>Guardar cambios</button>
+          <button type="button" className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button type="button" className="action ink" onClick={handleSave} style={{ flex: 2 }} disabled={!bikeDescription.trim()}>Guardar cambios</button>
         </div>
       </div>
     </div>
