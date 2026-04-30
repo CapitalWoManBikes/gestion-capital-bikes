@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
+import { initializeFirestore, doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBD0-RxJoGkRUCVTBFE_ZvN4in_fzKVGuo",
@@ -12,7 +12,8 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// ignoreUndefinedProperties evita que Firestore rechace objetos con campos opcionales undefined
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 
 const SHOP_DOC = doc(db, "shop", "data");
 

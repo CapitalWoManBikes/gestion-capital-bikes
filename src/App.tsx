@@ -1991,7 +1991,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [bikeDescription, setBikeDescription] = useState("");
-  const [date, setDate] = useState(initialDate || new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(initialDate || _addDays(0));
   const [neededByDate, setNeededByDate] = useState("");
   const [notes, setNotes] = useState("");
   const [serviceType, setServiceType] = useState("");
@@ -3013,19 +3013,19 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("cwb_services", JSON.stringify(services));
-    if (fbReady.current) saveShopData({ services });
+    if (fbReady.current) saveShopData({ services }).catch(e => console.error("Firestore services:", e));
   }, [services]);
   useEffect(() => {
     localStorage.setItem("cwb_tasks", JSON.stringify(tasks));
-    if (fbReady.current) saveShopData({ tasks });
+    if (fbReady.current) saveShopData({ tasks }).catch(e => console.error("Firestore tasks:", e));
   }, [tasks]);
   useEffect(() => {
     localStorage.setItem("cwb_team", JSON.stringify(team));
-    if (fbReady.current) saveShopData({ team });
+    if (fbReady.current) saveShopData({ team }).catch(e => console.error("Firestore team:", e));
   }, [team]);
   useEffect(() => {
     localStorage.setItem("cwb_shift", JSON.stringify(shift));
-    if (fbReady.current) saveShopData({ shift });
+    if (fbReady.current) saveShopData({ shift }).catch(e => console.error("Firestore shift:", e));
   }, [shift]);
   useEffect(() => {
     localStorage.setItem("cwb_emp_lunch", JSON.stringify(empLunch));
