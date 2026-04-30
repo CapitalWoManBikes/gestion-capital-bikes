@@ -22,7 +22,9 @@ export interface ShopData {
   extendedData: Record<string, any>;
   services: any[];
   tasks: any[];
+  appointments: any[];
   shift: Record<string, boolean>;
+  empLunch: Record<string, boolean>;
 }
 
 /** Saves the full shop state to Firestore (merge so partial updates are safe). */
