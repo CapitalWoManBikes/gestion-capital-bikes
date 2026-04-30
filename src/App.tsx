@@ -2327,16 +2327,27 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
 
       {done.length > 0 && (
         <>
-          <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", letterSpacing: 1, marginTop: 24, marginBottom: 10 }}>COMPLETADOS</div>
+          <div className="sk-mono" style={{ fontSize: 11, color: "#2e7d32", letterSpacing: 1, marginTop: 24, marginBottom: 10 }}>✅ LISTAS PARA RECOGER ({done.length})</div>
           {done.map(s => (
-            <div key={s.id} style={{ background: "var(--paper)", border: "1.4px solid var(--line)", borderRadius: 12, padding: 14, marginBottom: 8, opacity: 0.65 }}>
+            <div key={s.id} style={{ background: "rgba(76,175,80,.07)", border: "2px solid #4caf50", borderRadius: 12, padding: 14, marginBottom: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <div>
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>{s.clientName}</span>
-                  <span style={{ color: "var(--ink-3)", fontSize: 13 }}> · {s.bikeDescription}</span>
-                  <div className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>📅 {s.date}</div>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: "#1b5e20" }}>{s.clientName}</span>
+                  <span style={{ color: "#388e3c", fontSize: 13 }}> · {s.bikeDescription}</span>
+                  {s.serviceType && <div style={{ fontSize: 11, color: "#388e3c", marginTop: 1 }}>🛠 {s.serviceType}</div>}
+                  <div className="sk-mono" style={{ fontSize: 10, color: "#4caf50", marginTop: 2 }}>📅 {s.date}</div>
+                  {s.technicianId && team.find(p => p.id === s.technicianId) && <div className="sk-mono" style={{ fontSize: 10, color: "#4caf50", marginTop: 1 }}>🔧 {team.find(p => p.id === s.technicianId)?.name}</div>}
                 </div>
-                <span style={{ color: "#4caf50", fontSize: 13 }}>✅ Lista para recoger</span>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                  <span style={{ background: "#4caf50", color: "#fff", borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>✅ Lista para recoger</span>
+                  {s.deliveryStatus === "entregada"
+                    ? <span style={{ fontSize: 11, color: "#2e7d32", fontWeight: 600 }}>🏠 Entregada</span>
+                    : <button onClick={() => onUpdateService(s.id, { deliveryStatus: "entregada" })}
+                        style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, border: "1.3px solid #4caf50", background: "transparent", color: "#2e7d32", cursor: "pointer", fontFamily: "inherit" }}>
+                        Marcar entregada
+                      </button>
+                  }
+                </div>
               </div>
             </div>
           ))}
