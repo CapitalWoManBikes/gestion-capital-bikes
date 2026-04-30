@@ -1997,9 +1997,8 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
   const inp: React.CSSProperties = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.3px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 13, boxSizing: "border-box", fontFamily: "inherit", marginBottom: 10 };
   const lbl: React.CSSProperties = { fontSize: 11, fontFamily: "var(--mono)", color: "var(--ink-3)", letterSpacing: 1, textTransform: "uppercase" as const, display: "block", marginBottom: 4 };
   const canAdd = clientName.trim() && clientEmail.trim() && bikeDescription.trim();
-  const handleAdd = async () => {
+  const handleAdd = () => {
     if (!canAdd || saving) return;
-    setSaving(true);
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     const newService: BikeService = {
       id, clientName: clientName.trim(), clientEmail: clientEmail.trim(),
@@ -2015,23 +2014,19 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
       diagnosticUpdates: [],
     };
     onAdd(newService);
-    const trackingLink = buildTrackingUrl(newService);
-    try {
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
-        email: newService.clientEmail,
-        client_email: newService.clientEmail,
-        client_name: newService.clientName,
-        bike_description: newService.bikeDescription,
-        phase_name: "Recibida",
-        phase_icon: "📋",
-        phase_message: `Hemos recibido tu bicicleta correctamente.\n\nEl proceso de revisión y mantenimiento puede tomar entre 1 y 5 días hábiles, dependiendo del estado de la bicicleta, disponibilidad de repuestos y autorización del cliente.\n\nPuedes consultar el estado actual de tu bicicleta en el siguiente enlace:`,
-        tracking_link: trackingLink,
-      }, EMAILJS_PUBLIC_KEY);
-    } catch (err: any) {
-      console.warn("EmailJS error al crear servicio:", err?.text || err);
-    }
-    setSaving(false);
     onClose();
+    // Email se envía en segundo plano sin bloquear el cierre del modal
+    const trackingLink = buildTrackingUrl(newService);
+    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
+      email: newService.clientEmail,
+      client_email: newService.clientEmail,
+      client_name: newService.clientName,
+      bike_description: newService.bikeDescription,
+      phase_name: "Recibida",
+      phase_icon: "📋",
+      phase_message: `Hemos recibido tu bicicleta correctamente.\n\nEl proceso de revisión y mantenimiento puede tomar entre 1 y 5 días hábiles, dependiendo del estado de la bicicleta, disponibilidad de repuestos y autorización del cliente.\n\nPuedes consultar el estado actual de tu bicicleta en el siguiente enlace:`,
+      tracking_link: trackingLink,
+    }, EMAILJS_PUBLIC_KEY).catch((err: any) => console.warn("EmailJS error al crear servicio:", err?.text || err));
   };
   return (
     <div style={{ position: "fixed", inset: 0, background: "#0008", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -2098,8 +2093,8 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
         <label style={lbl}>Notas (opcional)</label>
         <textarea style={{ ...inp, resize: "vertical" as const, minHeight: 60 }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Cambio de frenos, ajuste de cambios..." />
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-          <button className="action" onClick={onClose} style={{ flex: 1 }} disabled={saving}>Cancelar</button>
-          <button className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!canAdd || saving}>{saving ? "Guardando..." : "Crear servicio"}</button>
+          <button type="button" className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button type="button" className="action ink" onClick={handleAdd} style={{ flex: 2 }} disabled={!canAdd}>Crear servicio</button>
         </div>
       </div>
     </div>
