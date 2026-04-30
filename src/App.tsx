@@ -518,6 +518,7 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
               <hr className="sk-hr dashed" />
               <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>PERMISOS</div>
               {([
+                { key: "canViewServices", label: "Ver módulo de servicios" },
                 { key: "canScheduleServices", label: "Puede agendar servicios" },
                 { key: "canEditAppointments", label: "Puede editar agendamientos" },
                 { key: "canRegisterBikes", label: "Puede registrar bicicletas" },
@@ -2534,7 +2535,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   const perms = extData.permissions || { ...DEFAULT_PERMISSIONS };
   const phName = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
   const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
-  const [tab, setTab] = useState<"inicio" | "calendario">("inicio");
+  const [tab, setTab] = useState<"inicio" | "calendario" | "servicios">("inicio");
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(id); }, []);
   const shiftEntry = shift[session.id!];
@@ -2559,14 +2560,31 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
 
       {/* Pestañas */}
       <div style={{ display: "flex", borderBottom: "1.4px solid var(--line)", background: "var(--paper-2)", flexShrink: 0 }}>
-        {(["inicio", "calendario"] as const).map(t => (
-          <div key={t} onClick={() => setTab(t)}
-            style={{ padding: "11px 22px", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase" as const, cursor: "pointer", borderBottom: `2px solid ${tab === t ? "var(--accent)" : "transparent"}`, color: tab === t ? "var(--accent)" : "var(--ink-3)", transition: "color .15s, border-color .15s", WebkitTapHighlightColor: "transparent" }}
+        {([
+          { id: "inicio", label: "🏠 Inicio" },
+          ...(perms.canViewServices ? [{ id: "servicios", label: "🚲 Servicios" }] : []),
+          { id: "calendario", label: "📅 Calendario" },
+        ] as { id: "inicio" | "servicios" | "calendario"; label: string }[]).map(t => (
+          <div key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "11px 22px", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase" as const, cursor: "pointer", borderBottom: `2px solid ${tab === t.id ? "var(--accent)" : "transparent"}`, color: tab === t.id ? "var(--accent)" : "var(--ink-3)", transition: "color .15s, border-color .15s", WebkitTapHighlightColor: "transparent" }}
           >
-            {t === "inicio" ? "🏠 Inicio" : "📅 Calendario"}
+            {t.label}
           </div>
         ))}
       </div>
+
+      {tab === "servicios" && perms.canViewServices && (
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <ServiceSection
+            services={services}
+            team={team}
+            onAdvancePhase={perms.canModifyServices ? onAdvancePhase : () => {}}
+            onNewService={perms.canRegisterBikes ? onNewService : () => {}}
+            onUpdateService={perms.canModifyServices ? (onUpdateService ?? (() => {})) : () => {}}
+            onDeleteService={() => {}}
+          />
+        </div>
+      )}
 
       {tab === "calendario" && (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -2930,7 +2948,7 @@ function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session)
   );
 }
 
-const DEFAULT_PERMISSIONS = { canScheduleServices: true, canEditAppointments: true, canRegisterBikes: true, canModifyServices: true };
+const DEFAULT_PERMISSIONS = { canViewServices: true, canScheduleServices: true, canEditAppointments: true, canRegisterBikes: true, canModifyServices: true };
 const DEFAULT_EXT = {
   s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
   c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
