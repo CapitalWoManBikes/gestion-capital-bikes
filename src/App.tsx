@@ -1535,17 +1535,18 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
                     title={`${s.clientName} · ${s.bikeDescription}`}
                     onClick={() => onUpdateService && setEditingSvc(s)}
                     style={{
-                      ...(urg && urg.color === "#c0392b" ? { borderColor: "#c0392b", background: "rgba(192,57,43,.08)" } : {}),
+                      ...(s.phase === 4 ? { borderColor: "#4caf50", borderWidth: 2, background: "rgba(76,175,80,.10)" } :
+                          urg && urg.color === "#c0392b" ? { borderColor: "#c0392b", background: "rgba(192,57,43,.08)" } : {}),
                       cursor: onUpdateService ? "pointer" : "default",
                     }}>
-                    {s.startTime && <div className="sk-mono text-xs" style={{ color: "#6c1f6e" }}>{s.startTime}{s.endTime ? `–${s.endTime}` : ""}</div>}
-                    <div style={{ fontSize: 11, fontWeight: 700 }}>{s.clientName}</div>
-                    <div style={{ fontSize: 10, color: "#6c1f6e" }}>{s.bikeDescription}</div>
-                    <div style={{ fontSize: 10, color: "#9c4a9e" }}>{s.phase === 0 ? "📋 Recibida" : `${phInfo?.icon} ${phInfo?.name}`}</div>
-                    {tech && <div style={{ fontSize: 10, color: "#9c4a9e" }}>🔧 {tech.name}</div>}
-                    {urg && <div style={{ fontSize: 10, color: urg.color, fontWeight: 600 }}>{urg.label}</div>}
+                    {s.startTime && <div className="sk-mono text-xs" style={{ color: s.phase === 4 ? "#2e7d32" : "#6c1f6e" }}>{s.startTime}{s.endTime ? `–${s.endTime}` : ""}</div>}
+                    <div style={{ fontSize: 11, fontWeight: 700, color: s.phase === 4 ? "#1b5e20" : undefined }}>{s.clientName}</div>
+                    <div style={{ fontSize: 10, color: s.phase === 4 ? "#388e3c" : "#6c1f6e" }}>{s.bikeDescription}</div>
+                    <div style={{ fontSize: 10, color: s.phase === 4 ? "#4caf50" : "#9c4a9e", fontWeight: s.phase === 4 ? 700 : undefined }}>{s.phase === 0 ? "📋 Recibida" : `${phInfo?.icon} ${phInfo?.name}`}</div>
+                    {tech && <div style={{ fontSize: 10, color: s.phase === 4 ? "#4caf50" : "#9c4a9e" }}>🔧 {tech.name}</div>}
+                    {urg && s.phase < 4 && <div style={{ fontSize: 10, color: urg.color, fontWeight: 600 }}>{urg.label}</div>}
                     {s.paymentStatus === "pagado" && <div style={{ fontSize: 10, color: "#2e7d32" }}>✅ Pagado</div>}
-                    {s.paymentStatus === "adelanto" && <div style={{ fontSize: 10, color: "#6c1f6e" }}>📤 {s.paymentAmount ? `$${s.paymentAmount.toLocaleString()}` : "Abono"}</div>}
+                    {s.paymentStatus === "adelanto" && <div style={{ fontSize: 10, color: s.phase === 4 ? "#388e3c" : "#6c1f6e" }}>📤 {s.paymentAmount ? `$${s.paymentAmount.toLocaleString()}` : "Abono"}</div>}
                     {onUpdateService && <div style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 2 }}>✏️ editar</div>}
                   </div>
                 );
