@@ -710,9 +710,16 @@ function DashLista({ lunchState, shiftState, team = INITIAL_TEAM, onRemove }) {
           <div className="sk-title text-xl">Avisos</div>
           <hr className="sk-hr wavy" />
           <div className="stack" style={{ gap: 8 }}>
-            {shiftState.s && <div className="text-sm"><span className="chip accent">·</span> Sergio entró 09:15</div>}
-            {lunchState && shiftState.s && <div className="text-sm"><span className="chip lunch">·</span> Sergio en almuerzo 13:58</div>}
-            {shiftState.c && <div className="text-sm"><span className="chip accent">·</span> Cindy entró 09:08</div>}
+            {team.filter(p => shiftState[p.id]).map(p => {
+              const t = typeof shiftState[p.id] === "string" ? new Date(shiftState[p.id] as string).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
+              const isOnLunch = lunchState && p.id === "s";
+              return (
+                <div key={p.id} className="text-sm">
+                  <span className={isOnLunch ? "chip lunch" : "chip accent"}>·</span> {p.name} entró {t}{isOnLunch ? " · almuerzo" : ""}
+                </div>
+              );
+            })}
+            {team.filter(p => shiftState[p.id]).length === 0 && <div className="text-sm muted">Nadie ha fichado entrada hoy</div>}
             <div className="text-sm"><span className="chip dash">·</span> 1:1 Sergio — jueves 10:00</div>
           </div>
         </div>
@@ -1042,18 +1049,18 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
 
 // ─── SECCIÓN 2b: Turnos ───────────────────────────────────────────────────────
 function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TEAM }) {
-  const [shiftTimer, setShiftTimer] = useState<Record<string, number>>({});
+  const [, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => {
-      setShiftTimer(t => {
-        const next: Record<string, number> = {};
-        team.forEach(p => { next[p.id] = shiftState[p.id] ? (t[p.id] || 0) + 1 : 0; });
-        return next;
-      });
-    }, 1000);
+    const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
-  }, [shiftState, team]);
-  const fmtTime = s => { const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return `${h}h ${m.toString().padStart(2, "0")}m`; };
+  }, []);
+  const getElapsed = (val: boolean | string): number => {
+    if (!val || typeof val !== "string") return 0;
+    return Math.floor((Date.now() - new Date(val).getTime()) / 1000);
+  };
+  const fmtTime = (s: number) => { const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return `${h}h ${m.toString().padStart(2, "0")}m`; };
+  const fmtHour = (iso: string) => new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const nowStr = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
 
   return (
     <div className="fade-in" style={{ padding: 18 }}>
@@ -1065,7 +1072,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
           <div className="sk-box p-4">
             <div className="row between">
               <div className="sk-title text-xl">Ahora mismo</div>
-              <span className="sk-mono text-xs muted">14:08</span>
+              <span className="sk-mono text-xs muted">{nowStr}</span>
             </div>
             <hr className="sk-hr wavy" />
             <div className="row gap-3" style={{ flexWrap: "wrap" }}>
@@ -1080,17 +1087,17 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                     <div className="stack" style={{ gap: 0 }}>
                       <span className="text-sm" style={{ fontWeight: 700 }}>{p.name}</span>
                       <span className="sk-mono text-xs muted">
-                        {shiftState[p.id] ? (lunchState && p.id === "s" ? "almuerzo" : `${fmtTime(shiftTimer[p.id] || 0)} trabajadas`) : "fuera de turno"}
+                        {shiftState[p.id] ? (lunchState && p.id === "s" ? "almuerzo" : `${fmtTime(getElapsed(shiftState[p.id]))} trabajadas`) : "fuera de turno"}
                       </span>
                     </div>
                   </div>
                   <hr className="sk-hr dashed" />
                   <div className="sk-mono text-xs muted">
-                    {shiftState[p.id] ? (p.id === "s" ? "ENTRÓ 09:15" : "ENTRÓ 09:08") : "— sin fichar —"}
+                    {typeof shiftState[p.id] === "string" ? `ENTRÓ ${fmtHour(shiftState[p.id] as string)}` : "— sin fichar —"}
                   </div>
                   <div style={{ marginTop: 8 }}>
                     {!shiftState[p.id] ? (
-                      <button className="action accent" style={{ width: "100%", fontSize: 12 }} onClick={() => setShiftState(s => ({ ...s, [p.id]: true }))}>
+                      <button className="action accent" style={{ width: "100%", fontSize: 12 }} onClick={() => setShiftState(s => ({ ...s, [p.id]: new Date().toISOString() }))}>
                         <Icon d={I.in} size={14} /> ENTRAR
                       </button>
                     ) : (
@@ -1107,26 +1114,26 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
           {/* Eventos del día */}
           <div className="sk-box p-4">
             <div className="row between">
-              <div className="sk-title text-xl">Eventos del día</div>
-              <span className="chip dash">turno · 9:00–19:00</span>
+              <div className="sk-title text-xl">Fichajes de hoy</div>
+              <span className="sk-mono text-xs muted">{new Date().toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" })}</span>
             </div>
             <hr className="sk-hr dashed" />
-            {[
-              { t: "13:58", who: team[0] || INITIAL_TEAM[0], kind: "lunch", label: "empezó almuerzo" },
-              { t: "13:30", who: team[1] || INITIAL_TEAM[1], kind: "out-lunch", label: "terminó almuerzo · 35m" },
-              { t: "12:55", who: team[1] || INITIAL_TEAM[1], kind: "lunch", label: "empezó almuerzo" },
-              { t: "09:15", who: team[0] || INITIAL_TEAM[0], kind: "in", label: "entró al taller" },
-              { t: "09:08", who: team[1] || INITIAL_TEAM[1], kind: "in", label: "entró a la tienda" },
-            ].map((ev, i) => {
-              const color = ev.kind === "in" ? "var(--accent)" : ev.kind === "lunch" ? "var(--lunch)" : ev.kind === "out" ? "var(--ink)" : "var(--ink-2)";
-              const bg = ev.kind === "in" ? "var(--accent-soft)" : ev.kind === "lunch" ? "var(--lunch-soft)" : "var(--paper-2)";
+            {team.filter(p => shiftState[p.id]).length === 0 && (
+              <div className="sk-mono text-xs muted" style={{ padding: "12px 0" }}>— Nadie ha fichado entrada hoy —</div>
+            )}
+            {team.filter(p => shiftState[p.id]).map(p => {
+              const entryTime = typeof shiftState[p.id] === "string" ? fmtHour(shiftState[p.id] as string) : "—";
+              const elapsed = fmtTime(getElapsed(shiftState[p.id]));
+              const isOnLunch = lunchState && p.id === "s";
               return (
-                <div key={i} className="row gap-3" style={{ padding: "8px 0", borderBottom: "1.2px dashed var(--line)" }}>
-                  <span className="sk-mono text-xs muted" style={{ width: 48, flexShrink: 0 }}>{ev.t}</span>
-                  <Av p={ev.who} size="xs" />
-                  <span className="text-sm" style={{ flex: 1 }}>{ev.who.name} · <span className="muted">{ev.label}</span></span>
-                  <span className="chip" style={{ background: bg, color, borderColor: color, fontSize: 11 }}>
-                    {ev.kind === "in" ? "⬈ ENTRADA" : ev.kind === "lunch" ? "🥪 ALMUERZO" : "⬊ SALIDA"}
+                <div key={p.id} className="row gap-3" style={{ padding: "10px 0", borderBottom: "1.2px dashed var(--line)" }}>
+                  <Av p={p} size="xs" state={isOnLunch ? "lunch" : "busy"} />
+                  <div style={{ flex: 1 }}>
+                    <div className="text-sm" style={{ fontWeight: 600 }}>{p.name}</div>
+                    <div className="sk-mono text-xs muted">Entró {entryTime} · {elapsed} trabajadas</div>
+                  </div>
+                  <span className="chip" style={{ background: isOnLunch ? "var(--lunch-soft)" : "var(--accent-soft)", color: isOnLunch ? "var(--lunch)" : "var(--accent)", borderColor: isOnLunch ? "var(--lunch)" : "var(--accent)", fontSize: 11 }}>
+                    {isOnLunch ? "🥪 ALMUERZO" : "⬈ EN TURNO"}
                   </span>
                 </div>
               );
@@ -2516,6 +2523,12 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   const phName = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
   const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
   const [tab, setTab] = useState<"inicio" | "calendario">("inicio");
+  const [, setTick] = useState(0);
+  useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(id); }, []);
+  const shiftEntry = shift[session.id!];
+  const elapsedSecs = (shiftEntry && typeof shiftEntry === "string") ? Math.floor((Date.now() - new Date(shiftEntry).getTime()) / 1000) : 0;
+  const elapsedStr = elapsedSecs > 0 ? `${Math.floor(elapsedSecs / 3600)}h ${String(Math.floor((elapsedSecs % 3600) / 60)).padStart(2, "0")}m` : "";
+  const entryTimeStr = (shiftEntry && typeof shiftEntry === "string") ? new Date(shiftEntry).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false }) : "";
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column" }}>
@@ -2563,13 +2576,19 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
           <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>
             {isLunch ? "En almuerzo" : isIn ? "Estás en turno" : "Fuera de turno"}
           </div>
-          <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 14 }}>
+          <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6 }}>
             {isLunch ? "Toca Terminar cuando vuelvas" : isIn ? "Toca para marcar tu salida" : "Toca para marcar tu entrada"}
           </div>
+          {isIn && entryTimeStr && (
+            <div className="sk-mono" style={{ fontSize: 12, color: "var(--accent)", marginBottom: 14 }}>
+              Entrada: {entryTimeStr}{elapsedStr ? ` · ${elapsedStr} trabajadas` : ""}
+            </div>
+          )}
+          {!isIn && <div style={{ marginBottom: 14 }} />}
           <button
             style={{ fontSize: 14, padding: "10px 32px", borderRadius: 999, background: isIn ? "#e05555" : "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}
             onClick={() => {
-              setShift((s: any) => ({ ...s, [session.id!]: !s[session.id!] }));
+              setShift((s: any) => ({ ...s, [session.id!]: s[session.id!] ? false : new Date().toISOString() }));
               if (isLunch) setEmpLunch?.(l => ({ ...l, [session.id!]: false }));
             }}
           >
@@ -2927,7 +2946,7 @@ export default function App() {
   const [empLunch, setEmpLunch] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem("cwb_emp_lunch") || "null") || {}; } catch { return {}; }
   });
-  const [shift, setShift] = useState<Record<string, boolean>>(() => {
+  const [shift, setShift] = useState<Record<string, boolean | string>>(() => {
     try { return JSON.parse(localStorage.getItem("cwb_shift") || "null") || { s: false, c: false }; } catch { return { s: false, c: false }; }
   });
   const [team, setTeam] = useState(() => {
