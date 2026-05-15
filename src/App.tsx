@@ -267,6 +267,7 @@ const CSS = `
   .app-layout{display:flex;height:100vh;overflow:hidden;}
   .main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
   .content-area{flex:1;overflow-y:auto;}
+  .mobile-only{display:none;}
 
   .app-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1.4px solid var(--line);background:var(--paper);flex-shrink:0;gap:14px;}
   .app-bar-left{display:flex;align-items:center;gap:12px;min-width:0;flex:1;}
@@ -319,14 +320,20 @@ const CSS = `
 
   /* ── Responsive ── */
   @media (max-width:768px){
+    html,body,#root{min-height:100%;min-height:100dvh;}
+    body{overscroll-behavior-y:none;-webkit-text-size-adjust:100%;}
     .nav{display:none!important;}
     .mobile-nav{display:flex!important;}
-    .app-layout{flex-direction:column;}
-    .content-area{padding-bottom:80px;}
-    .app-bar{padding:8px 12px;gap:8px;}
+    .app-layout{flex-direction:column;height:100dvh;overflow:hidden;}
+    .main-content{height:100dvh;}
+    .content-area{padding-bottom:calc(82px + env(safe-area-inset-bottom,0));-webkit-overflow-scrolling:touch;}
+    .app-bar{padding:10px 12px;gap:8px;align-items:flex-start;}
     .app-bar-left{gap:8px;}
     .app-bar-divider{display:none;}
+    .app-bar > .row{flex-wrap:wrap;justify-content:flex-end;gap:6px;}
     .app-bar .chip{display:none;}
+    .app-bar .sk-title{font-size:22px!important;line-height:1.05;}
+    .app-bar .sk-mono{font-size:10px!important;}
     .section-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
     .section-tabs::-webkit-scrollbar{display:none;}
     .section-tab{padding:10px 14px;font-size:10px;flex-shrink:0;}
@@ -338,13 +345,52 @@ const CSS = `
     .text-2xl{font-size:18px;}
     .text-xl{font-size:16px;}
     .phone{width:100%;max-width:260px;}
-    button.action{min-height:36px;}
+    button.action{min-height:38px;padding:7px 12px;}
     .mobile-nav-item{padding:8px 2px;}
+    .mobile-only{display:block;}
+    .desktop-only{display:none!important;}
+    [style*="grid-template-columns"]{grid-template-columns:1fr!important;}
+    .mobile-stack,
+    .dash-list-grid,
+    .dash-kanban-grid,
+    .dash-map-grid,
+    .lunch-admin-grid,
+    .shift-grid,
+    .shift-phone-grid,
+    .profile-grid,
+    .tasks-grid,
+    .calendar-grid,
+    .ops-grid,
+    .service-grid{display:flex!important;flex-direction:column!important;grid-template-columns:1fr!important;gap:12px!important;padding:12px!important;}
+    .dash-kanban-grid > *,
+    .dash-map-grid > *,
+    .lunch-admin-grid > *,
+    .shift-grid > *,
+    .profile-grid > *,
+    .tasks-grid > *,
+    .calendar-grid > *,
+    .ops-grid > *,
+    .service-grid > *{width:100%!important;min-width:0!important;}
+    .row{min-width:0;}
+    .row.mobile-wrap,
+    .sk-box .row.between{flex-wrap:wrap;gap:8px;}
+    .chip{font-size:10px;padding:2px 7px;}
+    .avatar.lg{width:44px;height:44px;font-size:22px;}
+    .avatar.xl{width:64px;height:64px;font-size:30px;}
+    .p-4{padding:12px;}.p-5{padding:14px;}
+    .notif-banner{padding:9px 12px;}
+    .cal-day{min-width:180px;}
+    .calendar-week{overflow-x:auto!important;-webkit-overflow-scrolling:touch;}
+    .service-section{padding:12px!important;max-width:100%!important;}
   }
   @media (max-width:480px){
+    .app-bar{flex-direction:column;}
+    .app-bar-left{width:100%;}
     .app-bar .action{display:none;}
     .nav-section span:last-child{display:none;}
-    button.action{min-height:40px;}
+    button.action{min-height:42px;}
+    .section-tab{padding:10px 12px;}
+    .mobile-nav-item span{max-width:44px;font-size:8px;}
   }
 
   /* ── Calendario: tipo de evento ── */
@@ -653,7 +699,7 @@ function DashLista({ lunchState, shiftState, team = INITIAL_TEAM, onRemove }) {
   const done = tasks.filter(t => t.done).length;
 
   return (
-    <div className="fade-in" style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 18, padding: 18, flex: 1 }}>
+    <div className="fade-in dash-list-grid" style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 18, padding: 18, flex: 1 }}>
       <div className="stack gap-3">
         <div className="sk-mono text-xs tracked muted">PERSONAS (2)</div>
 
@@ -771,7 +817,7 @@ function DashKanban() {
     </div>
   );
   return (
-    <div className="fade-in" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, padding: 14, flex: 1 }}>
+    <div className="fade-in dash-kanban-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, padding: 14, flex: 1 }}>
       <Col id="todo" title="Por hacer" cards={cols.todo} />
       <Col id="doing" title="Haciendo" cards={cols.doing} bg="var(--accent-soft)" />
       <Col id="done" title="Hecho" cards={cols.done} />
@@ -850,7 +896,7 @@ function DashMapa({ lunchState, shiftState, team = INITIAL_TEAM }) {
           </div>
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: lunchState && shiftState.s ? 80 : 16 }}>
+      <div className="dash-map-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: lunchState && shiftState.s ? 80 : 16 }}>
         <div className="sk-box fill p-4" style={lunchState && shiftState.s ? { borderColor: "var(--lunch)", borderWidth: 2 } : shiftState.s ? { borderColor: "var(--accent)", borderWidth: 2 } : {}}>
           <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 16 }}>ZONA · TALLER</div>
           <div className="stack gap-2" style={{ alignItems: "center" }}>
@@ -923,7 +969,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr .9fr", gap: 16, alignItems: "start" }}>
+      <div className="lunch-admin-grid" style={{ display: "grid", gridTemplateColumns: "1.4fr .9fr", gap: 16, alignItems: "start" }}>
         <div className="sk-box p-4">
           <div className="row between" style={{ marginBottom: 12 }}>
             <div>
@@ -1048,7 +1094,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
   return (
     <div className="fade-in" style={{ padding: 18 }}>
       <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 16 }}>FICHAJES · ENTRADA Y SALIDA DE TURNO</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 14 }}>
+      <div className="shift-grid" style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 14 }}>
         <div className="stack gap-3">
 
           {/* Ahora mismo */}
@@ -1167,7 +1213,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
       {/* 3 teléfonos empleado */}
       <div style={{ marginTop: 24 }}>
         <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 16 }}>PANTALLAS DEL EMPLEADO (móvil)</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, alignItems: "start" }}>
+        <div className="shift-phone-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, alignItems: "start" }}>
           {[
             {
               label: "Entrar al turno", content: (
@@ -1304,7 +1350,7 @@ function ProfileSection({ team = INITIAL_TEAM, extendedData = {}, onEditMember }
         </div>
       </div>
       {tab === "ficha" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 20, padding: "16px 18px" }}>
+        <div className="profile-grid" style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 20, padding: "16px 18px" }}>
           <div className="stack gap-3" style={{ alignItems: "center", textAlign: "center" }}>
             <Av p={person} size="xl" />
             <div>
@@ -1494,7 +1540,7 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
       </div>
 
       {/* Grid semana */}
-      <div style={{ display: "flex", flex: 1, overflow: "auto", borderBottom: "1.4px solid var(--line)" }}>
+      <div className="calendar-week" style={{ display: "flex", flex: 1, overflow: "auto", borderBottom: "1.4px solid var(--line)" }}>
         {days.map((day, i) => {
           const dateStr = _fmtDate(day);
           const isToday = dateStr === todayStr;
@@ -1748,7 +1794,7 @@ function OpsSection() {
         <button className={"action" + (view === "onb" ? " ink" : "")} onClick={() => setView("onb")}>Onboarding</button>
       </div>
       {view === "1:1" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 16, padding: "14px 18px" }}>
+        <div className="tasks-grid" style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 16, padding: "14px 18px" }}>
           <div className="stack gap-3">
             <div className="sk-box p-4">
               <div className="sk-mono text-xs tracked muted">AGENDA · JUE 23 ABR 10:00</div>
@@ -2162,7 +2208,7 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
   const done    = services.filter(s => s.phase === 4);
 
   return (
-    <div style={{ padding: "16px 16px", maxWidth: 700, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
+    <div className="service-section" style={{ padding: "16px 16px", maxWidth: 700, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Servicios de bicicletas</div>
