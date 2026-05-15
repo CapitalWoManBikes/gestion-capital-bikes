@@ -895,160 +895,142 @@ function DashMapa({ lunchState, shiftState, team = INITIAL_TEAM }) {
 }
 
 // ─── SECCIÓN 2: Almuerzo ─────────────────────────────────────────────────────
-function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TEAM }) {
-  const [timer, setTimer] = useState(28 * 60);
-  const running = lunchState && shiftState.s;
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => setTimer(t => Math.max(0, t - 1)), 1000);
-    return () => clearInterval(id);
-  }, [running]);
-  useEffect(() => { if (!lunchState) setTimer(28 * 60); }, [lunchState]);
-  const mm = Math.floor(timer / 60).toString().padStart(2, "0");
-  const ss = (timer % 60).toString().padStart(2, "0");
-  const pct = ((28 * 60 - timer) / (28 * 60)) * 100;
+function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TEAM, empLunch = {}, setEmpLunch }) {
+  const activeLunch = team.filter(p => !!shiftState[p.id] && !!empLunch[p.id]);
+  const available = team.filter(p => !!shiftState[p.id] && !empLunch[p.id]);
+  const offShift = team.filter(p => !shiftState[p.id]);
+  const legacySergioLunch = !!lunchState && !!shiftState.s && !empLunch.s;
+  const lunchCount = activeLunch.length + (legacySergioLunch ? 1 : 0);
+  const shiftCount = team.filter(p => !!shiftState[p.id]).length;
+  const setLunchFor = (id: string, next: boolean) => {
+    if (next && !shiftState[id]) return;
+    setEmpLunch?.((prev: Record<string, boolean>) => ({ ...prev, [id]: next }));
+    if (id === "s") setLunchState(next);
+  };
+  const stateFor = (id: string) => !shiftState[id] ? "off" : empLunch[id] ? "lunch" : "ok";
+  const lunchList = activeLunch.length ? activeLunch : legacySergioLunch ? [team.find(p => p.id === "s") || INITIAL_TEAM[0]] : [];
 
   return (
     <div className="fade-in" style={{ padding: 18 }}>
-      <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 16 }}>FLUJO ALMUERZO / NO MOLESTAR</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, alignItems: "start" }}>
-
-        {/* 1 · Normal */}
+      <div className="row between" style={{ marginBottom: 16, alignItems: "flex-start" }}>
         <div>
-          <div className="sk-mono text-xs muted" style={{ textAlign: "center", marginBottom: 8 }}>1 · Estado normal</div>
-          <div className="phone">
-            <div className="notch" />
-            <div className="phone-inner">
-              <div className="row between"><span className="sk-mono text-xs muted">14:01</span><span className="sk-mono text-xs muted">●●●</span></div>
-              <div style={{ marginTop: 8, marginBottom: 4 }}><Logo height={22} /></div>
-              <div className="sk-title text-xl">Equipo</div>
-              <hr className="sk-hr wavy" />
-              {team.map(p => (
-                <div key={p.id} className="sk-box p-3" style={{ marginBottom: 8 }}>
-                  <div className="row between">
-                    <div className="row gap-2"><Av p={p} size="sm" /><div className="text-sm" style={{ fontWeight: 700 }}>{p.name}</div></div>
-                    <StatusPill state="ok" />
+          <div className="sk-mono text-xs tracked muted">CONTROL DE ALMUERZOS / NO MOLESTAR</div>
+          <div className="sk-title text-2xl" style={{ marginTop: 4 }}>Estado del equipo en tiempo real</div>
+        </div>
+        <div className="row gap-2">
+          <span className="chip accent"><span className="dot" style={{ background: "#fff" }} />{shiftCount} en turno</span>
+          <span className="chip lunch"><span className="dot" style={{ background: "#fff" }} />{lunchCount} en almuerzo</span>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr .9fr", gap: 16, alignItems: "start" }}>
+        <div className="sk-box p-4">
+          <div className="row between" style={{ marginBottom: 12 }}>
+            <div>
+              <div className="sk-mono text-xs tracked muted">EQUIPO</div>
+              <div className="text-sm sub">Inicia o termina almuerzo por persona.</div>
+            </div>
+            <button className="action lunch-btn" disabled={!available.length} onClick={() => available[0] && setLunchFor(available[0].id, true)}>
+              <Icon d={I.lunch} size={14} /> Iniciar siguiente
+            </button>
+          </div>
+
+          <div className="stack" style={{ gap: 10 }}>
+            {team.map(p => {
+              const isLunch = !!shiftState[p.id] && !!empLunch[p.id];
+              const isIn = !!shiftState[p.id];
+              return (
+                <div key={p.id} className="sk-box p-3" style={isLunch ? { borderColor: "var(--lunch)", borderWidth: 2, background: "var(--lunch-soft)" } : {}}>
+                  <div className="row between" style={{ gap: 12 }}>
+                    <div className="row gap-3" style={{ minWidth: 0 }}>
+                      <Av p={p} size="lg" state={isLunch ? "lunch" : isIn ? "busy" : null} />
+                      <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+                        <div className="text-sm" style={{ fontWeight: 800 }}>{p.name}</div>
+                        <div className="sk-mono text-xs muted">{p.role || "Equipo"} - {isIn ? "turno activo" : "fuera de turno"}</div>
+                      </div>
+                    </div>
+                    <div className="row gap-2" style={{ flexShrink: 0 }}>
+                      <StatusPill state={stateFor(p.id)} />
+                      {isLunch ? (
+                        <button className="action" onClick={() => setLunchFor(p.id, false)}>Terminar</button>
+                      ) : (
+                        <button className="action lunch-btn" disabled={!isIn} onClick={() => setLunchFor(p.id, true)}>
+                          <Icon d={I.lunch} size={14} /> Iniciar
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              ))}
-              <div style={{ marginTop: "auto" }}>
-                <button className="action lunch-btn w-full" style={{ width: "100%" }}
-                  onClick={() => setLunchState(true)} disabled={lunchState || !shiftState.s}>
-                  <Icon d={I.lunch} size={14} /> Iniciar almuerzo Sergio
-                </button>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* 2 · Push */}
-        <div>
-          <div className="sk-mono text-xs muted" style={{ textAlign: "center", marginBottom: 8 }}>2 · Push al llegar</div>
-          <div className="phone">
-            <div className="notch" />
-            <div className="phone-inner" style={{ filter: "blur(1.4px) grayscale(20%)", opacity: .75 }}>
-              <div style={{ marginTop: 8 }}><Logo height={22} /></div>
-              <div className="sk-title text-2xl">Equipo</div>
+        <div className="stack" style={{ gap: 16 }}>
+          <div className="sk-box p-4" style={lunchCount ? { borderColor: "var(--lunch)", borderWidth: 2 } : {}}>
+            <div className="row between" style={{ marginBottom: 10 }}>
+              <div className="sk-mono text-xs tracked muted">AHORA EN ALMUERZO</div>
+              <span className="chip lunch">{lunchCount}</span>
             </div>
-            {lunchState && shiftState.s ? (
-              <div className="sk-box fade-in" style={{ position: "absolute", left: 14, right: 14, top: 48, padding: 14, background: "var(--paper)", boxShadow: "0 10px 30px rgba(0,0,0,.15)" }}>
-                <div className="row between">
-                  <span className="chip lunch"><Icon d={I.lunch} size={12} /> ALMUERZO</span>
-                  <span className="sk-mono text-xs muted">ahora</span>
-                </div>
-                <div className="sk-title text-xl" style={{ marginTop: 8 }}>Sergio empezó a almorzar</div>
-                <div className="text-sm sub" style={{ marginTop: 4 }}>te aviso cuando vuelva (~28min)</div>
-                <hr className="sk-hr dashed" />
-                <div className="row gap-2">
-                  <button className="action ink" style={{ flex: 1 }}>ok, gracias</button>
-                  <button className="action" style={{ flex: 1 }}>urgente →</button>
-                </div>
+            {lunchList.length ? (
+              <div className="stack" style={{ gap: 10 }}>
+                {lunchList.map(p => (
+                  <div key={p.id} className="row between">
+                    <div className="row gap-2">
+                      <Av p={p} size="sm" state="lunch" />
+                      <div>
+                        <div className="text-sm" style={{ fontWeight: 800 }}>{p.name}</div>
+                        <div className="sk-mono text-xs muted">No molestar activo</div>
+                      </div>
+                    </div>
+                    <button className="action" onClick={() => setLunchFor(p.id, false)}>Volvio</button>
+                  </div>
+                ))}
               </div>
             ) : (
-              <div className="sk-box dashed" style={{ position: "absolute", left: 14, right: 14, top: 60, padding: 12, textAlign: "center" }}>
-                <div className="sk-mono text-xs muted">aparece cuando Sergio inicie almuerzo</div>
+              <div className="sk-box dashed p-4" style={{ textAlign: "center" }}>
+                <div className="sk-title text-xl">Nadie esta almorzando</div>
+                <div className="text-sm sub" style={{ marginTop: 4 }}>Cuando alguien marque almuerzo, aparecera aqui y en el banner superior.</div>
               </div>
             )}
           </div>
-        </div>
 
-        {/* 3 · Timer */}
-        <div>
-          <div className="sk-mono text-xs muted" style={{ textAlign: "center", marginBottom: 8 }}>3 · Timer activo</div>
-          <div className="phone">
-            <div className="notch" />
-            <div className="phone-inner">
-              <div style={{ marginTop: 8 }}><Logo height={22} /></div>
-              <hr className="sk-hr wavy" />
-              <div className="sk-box p-3" style={lunchState && shiftState.s ? { borderColor: "var(--lunch)", borderWidth: 2, background: "var(--lunch-soft)" } : {}}>
-                <div className="row gap-3">
-                  <Av p={team[0] || INITIAL_TEAM[0]} size="lg" state={lunchState && shiftState.s ? "lunch" : null} />
-                  <div className="stack" style={{ flex: 1 }}>
-                    <div className="text-sm" style={{ fontWeight: 700 }}>Sergio</div>
-                    <StatusPill state={lunchState && shiftState.s ? "lunch" : "ok"} />
-                  </div>
+          <div className="sk-box p-4">
+            <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>DISPONIBLES EN TURNO</div>
+            {available.length ? available.map(p => (
+              <div key={p.id} className="row between" style={{ padding: "8px 0", borderBottom: "1px dashed var(--line)" }}>
+                <div className="row gap-2">
+                  <Av p={p} size="sm" state="busy" />
+                  <div className="text-sm" style={{ fontWeight: 700 }}>{p.name}</div>
                 </div>
-                {lunchState && shiftState.s && (
-                  <>
-                    <div className="row between" style={{ marginTop: 10 }}>
-                      <div className="sk-mono text-xs muted">tiempo restante</div>
-                      <div className="sk-title text-2xl" style={{ color: "var(--accent-2)" }}>{mm}:{ss}</div>
-                    </div>
-                    <div className="lunch-bar"><div className="lunch-bar-fill" style={{ width: `${pct}%` }} /></div>
-                    <hr className="sk-hr dashed" />
-                    <button className="action" style={{ width: "100%", marginTop: 4 }} onClick={() => setLunchState(false)}>
-                      ✓ Terminar almuerzo
-                    </button>
-                  </>
-                )}
+                <button className="action lunch-btn" onClick={() => setLunchFor(p.id, true)}>Enviar</button>
               </div>
-              <div className="sk-box p-3" style={{ marginTop: 10 }}>
-                <div className="row gap-2"><Av p={team[1] || INITIAL_TEAM[1]} size="sm" /><div className="text-sm" style={{ fontWeight: 700 }}>{(team[1] || INITIAL_TEAM[1]).name} — disponible</div></div>
-              </div>
-              <div style={{ marginTop: "auto" }} className="sk-box p-3 fill">
-                <div className="sk-mono text-xs tracked muted">HISTORIAL · DIEGO</div>
-                <div className="row between text-sm"><span>esta semana</span><span className="sk-mono">3 · prom 32m</span></div>
-                <MiniBars n={5} w={240} h={24} />
-              </div>
-            </div>
+            )) : (
+              <div className="text-sm sub">No hay personas disponibles en turno.</div>
+            )}
           </div>
-        </div>
 
-        {/* 4 · Empleado */}
-        <div>
-          <div className="sk-mono text-xs muted" style={{ textAlign: "center", marginBottom: 8 }}>4 · Pantalla Sergio</div>
-          <div className="phone">
-            <div className="notch" />
-            <div className="phone-inner" style={{ alignItems: "center" }}>
-              <div className="row between w-full"><span className="sk-mono text-xs muted">09:02</span></div>
-              <div style={{ marginTop: 8 }}><Logo height={22} /></div>
-              <div className="sk-title text-2xl" style={{ marginTop: 8 }}>Hola Sergio 👋</div>
-              <div className="sk-box accent" style={{ width: "100%", padding: 18, marginTop: 14, textAlign: "center" }}>
-                <div className="sk-mono text-xs tracked" style={{ opacity: .9, color: "#fff" }}>FICHAJE</div>
-                <div className="sk-title text-3xl" style={{ color: "#fff", lineHeight: 1, margin: "6px 0" }}>Entrar</div>
-              </div>
-              <div className="sk-box" style={{ width: "100%", padding: 14, marginTop: 10 }}>
-                <div className="row between">
-                  <div className="row gap-2"><Icon d={I.lunch} size={18} /><span className="text-sm">Empezar almuerzo</span></div>
-                  <Icon d={I.chev} size={16} />
+          <div className="sk-box p-4">
+            <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>FUERA DE TURNO</div>
+            {offShift.length ? offShift.map(p => (
+              <div key={p.id} className="row between" style={{ padding: "6px 0" }}>
+                <div className="row gap-2">
+                  <Av p={p} size="xs" />
+                  <div className="text-sm">{p.name}</div>
                 </div>
-                <hr className="sk-hr dashed" />
-                <div className="sk-mono text-xs muted">avisa a Julieth · 30 min</div>
+                <StatusPill state="off" />
               </div>
-              <div style={{ marginTop: "auto" }} className="w-full">
-                <div className="sk-mono text-xs tracked muted">TAREAS HOY</div>
-                <div className="text-sm">◻ Montaje bici #115</div>
-                <div className="text-sm">◻ Pedido Shimano</div>
-              </div>
-            </div>
+            )) : (
+              <div className="text-sm sub">Todo el equipo esta en turno.</div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+
 }
 
-// ─── SECCIÓN 2b: Turnos ───────────────────────────────────────────────────────
 function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TEAM }) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -3171,11 +3153,11 @@ export default function App() {
             </div>
             {team.map(p => (
               <div key={p.id} className="nav-item" onClick={() => setSection("perfil")}>
-                <Av p={p} size="xs" state={shift[p.id] ? (lunch && p.id === "s" ? "lunch" : "busy") : null} />
+                <Av p={p} size="xs" state={shift[p.id] ? (empLunch[p.id] ? "lunch" : "busy") : null} />
                 <div className="stack" style={{ gap: 0 }}>
                   <span style={{ fontSize: 13 }}>{p.name}</span>
                   <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
-                    {!shift[p.id] ? "fuera" : lunch && p.id === "s" ? "almuerzo" : "en turno"}
+                    {!shift[p.id] ? "fuera" : empLunch[p.id] ? "almuerzo" : "en turno"}
                   </span>
                 </div>
                 <button onClick={e => { e.stopPropagation(); removeMember(p.id); }}
@@ -3221,8 +3203,8 @@ export default function App() {
           {/* AppBar */}
           <AppBar title={titles[section]} breadcrumb={breadcrumbs[section]}>
             {section === "dash" && <>
-              <span className="chip"><span className="dot g" />{[shift.s, shift.c].filter(Boolean).length}/2 en turno</span>
-              {lunch && shift.s && <span className="chip lunch"><span className="dot" style={{ background: "#fff" }} />1 almuerzo</span>}
+              <span className="chip"><span className="dot g" />{team.filter(p => shift[p.id]).length}/{team.length} en turno</span>
+              {team.some(p => empLunch[p.id] && shift[p.id]) && <span className="chip lunch"><span className="dot" style={{ background: "#fff" }} />{team.filter(p => empLunch[p.id] && shift[p.id]).length} almuerzo</span>}
               <button className="action ink" onClick={() => setShowAssignTask(true)}><Icon d={I.plus} size={14} /> Añadir tarea</button>
             </>}
             {section === "tareas" && (
@@ -3254,7 +3236,7 @@ export default function App() {
               {section === "dash" && dashTab === "kanban" && <DashKanban />}
               {section === "dash" && dashTab === "timeline" && <DashTimeline />}
               {section === "dash" && dashTab === "mapa" && <DashMapa lunchState={lunch} shiftState={shift} team={team} />}
-              {section === "lunch" && <LunchSection lunchState={lunch} setLunchState={setLunch} shiftState={shift} team={team} />}
+              {section === "lunch" && <LunchSection lunchState={lunch} setLunchState={setLunch} shiftState={shift} team={team} empLunch={empLunch} setEmpLunch={setEmpLunch} />}
               {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} />}
               {section === "perfil" && <ProfileSection team={team} extendedData={extendedData} onEditMember={updateMemberData} />}
               {section === "tareas" && <TasksSection tasks={tasks} team={team} onToggle={toggleTask} onAssign={() => setShowAssignTask(true)} />}
