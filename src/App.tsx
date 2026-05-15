@@ -548,8 +548,58 @@ function EditMemberModal({ person, extData = {}, onClose, onSave }) {
 }
 
 // ─── Primitivas ──────────────────────────────────────────────────────────────
-function Logo({ height = 28 }) {
-  return <img src={LOGO_SRC} alt="Capital Wo-Man Bikes" style={{ height, display: "block", objectFit: "contain" }} />;
+let darkBgLogoSrc = "";
+
+function Logo({ height = 28, white = false, darkBg = false }: { height?: number; white?: boolean; darkBg?: boolean }) {
+  const [src, setSrc] = useState(darkBg && darkBgLogoSrc ? darkBgLogoSrc : LOGO_SRC);
+
+  useEffect(() => {
+    if (!darkBg || darkBgLogoSrc) {
+      if (darkBgLogoSrc) setSrc(darkBgLogoSrc);
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        if (a === 0) continue;
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const chroma = max - min;
+        const isBrandColor = chroma > 32 && max > 72;
+
+        if (!isBrandColor) {
+          data[i] = 255;
+          data[i + 1] = 255;
+          data[i + 2] = 255;
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      darkBgLogoSrc = canvas.toDataURL("image/png");
+      if (!cancelled) setSrc(darkBgLogoSrc);
+    };
+    img.src = LOGO_SRC;
+
+    return () => { cancelled = true; };
+  }, [darkBg]);
+
+  return <img src={src} alt="Capital Wo-Man Bikes" style={{ height, display: "block", objectFit: "contain", filter: white ? "brightness(0) invert(1)" : undefined }} />;
 }
 
 function Av({ p, size = "sm", state }) {
@@ -2912,7 +2962,7 @@ function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session)
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#1a0d1a", padding: 16 }}>
       <style>{CSS}</style>
       <div style={{ background: "#221222", borderRadius: 16, padding: 40, width: "100%", maxWidth: 360, textAlign: "center", boxShadow: "0 4px 32px #0006" }}>
-        <Logo height={48} />
+        <Logo height={48} darkBg />
         <div style={{ marginTop: 24, marginBottom: 16, color: "#c8a8c8", fontFamily: "monospace", fontSize: 12, letterSpacing: 3 }}>ACCESO ADMINISTRACIÓN</div>
         {loading ? (
           <div style={{ color: "#6a4a6a", fontFamily: "monospace", fontSize: 12, padding: "20px 0", letterSpacing: 2 }}>CARGANDO...</div>
