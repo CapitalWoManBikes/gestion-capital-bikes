@@ -1432,11 +1432,12 @@ function ProfileSection({ team = INITIAL_TEAM, extendedData = {}, onEditMember }
 }
 
 // ─── SECCIÓN 4: Tareas ───────────────────────────────────────────────────────
-function TasksSection({ tasks, team, onToggle, onAssign }: { tasks: AppTask[]; team: any[]; onToggle: (id: string) => void; onAssign: () => void }) {
+function TasksSection({ tasks, team, onToggle, onUpdate, onAssign }: { tasks: AppTask[]; team: any[]; onToggle: (id: string) => void; onUpdate: (id: string, changes: Partial<AppTask>) => void; onAssign: () => void }) {
   const [view, setView] = useState("lista");
   const getMember = (id: string) => team.find(m => m.id === id);
   const pending = tasks.filter(t => !t.done);
   const done    = tasks.filter(t => t.done);
+  const today = _fmtDate(new Date());
   return (
     <div className="fade-in" style={{ flex: 1 }}>
       <div className="row gap-2 between" style={{ padding: "12px 18px", borderBottom: "1.4px dashed var(--line)", flexWrap: "wrap" }}>
@@ -1466,6 +1467,15 @@ function TasksSection({ tasks, team, onToggle, onAssign }: { tasks: AppTask[]; t
                 <span className="chip text-xs">{t.tag}</span>
                 {member && <Av p={member} size="xs" />}
                 {member && <span className="sk-mono text-xs muted">{member.name}</span>}
+                <label className="row gap-2" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                  <span className="sk-mono text-xs muted">Fecha</span>
+                  <input
+                    type="date"
+                    value={t.date || today}
+                    onChange={e => onUpdate(t.id, { date: e.target.value })}
+                    style={{ border: "1.2px solid var(--line)", borderRadius: 7, padding: "4px 7px", background: "var(--paper)", color: "var(--ink)", fontFamily: "var(--mono)", fontSize: 11 }}
+                  />
+                </label>
               </div>
             </div>
           );
@@ -3132,6 +3142,7 @@ export default function App() {
   };
   const addTask         = (t: AppTask) => setTasks(prev => [t, ...prev]);
   const toggleTask      = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  const updateTask      = (id: string, changes: Partial<AppTask>) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...changes } : t));
   const addAppointment  = (a: Appointment) => setAppointments(prev => [a, ...prev]);
   const logout = () => { sessionStorage.removeItem("cwb_session"); setSession(null); };
 
@@ -3286,7 +3297,7 @@ export default function App() {
               {section === "lunch" && <LunchSection lunchState={lunch} setLunchState={setLunch} shiftState={shift} team={team} empLunch={empLunch} setEmpLunch={setEmpLunch} />}
               {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} />}
               {section === "perfil" && <ProfileSection team={team} extendedData={extendedData} onEditMember={updateMemberData} />}
-              {section === "tareas" && <TasksSection tasks={tasks} team={team} onToggle={toggleTask} onAssign={() => setShowAssignTask(true)} />}
+              {section === "tareas" && <TasksSection tasks={tasks} team={team} onToggle={toggleTask} onUpdate={updateTask} onAssign={() => setShowAssignTask(true)} />}
               {section === "cal" && <CalendarSection tasks={tasks} appointments={appointments} services={services} setTasks={fn => setTasks(fn)} setAppointments={fn => setAppointments(fn)} onNewBikeService={date => { setServiceModalDate(date); setShowNewService(true); }} team={team} onUpdateService={updateService} />}
               {section === "ops" && <OpsSection />}
             </div>
