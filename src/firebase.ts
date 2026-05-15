@@ -24,6 +24,7 @@ export interface ShopData {
   services: any[];
   tasks: any[];
   appointments: any[];
+  memberships: any[];
   shift: Record<string, boolean>;
   empLunch: Record<string, boolean>;
 }

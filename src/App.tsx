@@ -44,6 +44,24 @@ interface Appointment {
   id: string; client: string; service: string; assignedTo: string;
   date: string; startTime: string; endTime: string; notes: string; createdAt: string;
 }
+interface MembershipUse {
+  id: string; date: string; note: string; createdAt: string;
+}
+interface Membership {
+  id: string;
+  clientName: string;
+  clientPhone: string;
+  planName: string;
+  price: number;
+  startDate: string;
+  endDate: string;
+  includedUses: number;
+  usedUses: number;
+  notes: string;
+  loyverseReceipt?: string;
+  createdAt: string;
+  uses: MembershipUse[];
+}
 interface Session {
   type: "admin" | "employee";
   id?: string; name?: string; role?: string;
@@ -58,6 +76,11 @@ const _fmtDate = (d: Date): string => {
 };
 const _addDays = (n: number): string => {
   const d = new Date();
+  d.setDate(d.getDate() + n);
+  return _fmtDate(d);
+};
+const _addDaysTo = (date: string, n: number): string => {
+  const d = new Date(date + "T00:00:00");
   d.setDate(d.getDate() + n);
   return _fmtDate(d);
 };
@@ -1992,6 +2015,7 @@ function OpsSection() {
 const NAV = [
   { id: "dash",      label: "Dashboard",       icon: "home"   },
   { id: "servicios", label: "Servicios",        icon: "wrench" },
+  { id: "membresias", label: "Mensualidades",   icon: "coin"   },
   { id: "lunch",     label: "Almuerzo",         icon: "lunch"  },
   { id: "turno",     label: "Fichajes/Turno",   icon: "in"     },
   { id: "perfil",    label: "Perfil equipo",    icon: "user"   },
@@ -2511,6 +2535,153 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
 }
 
 // ─── Modal asignar tarea ──────────────────────────────────────────────────────
+function MembershipSection({ memberships, onAdd, onUse, onCancel }: {
+  memberships: Membership[];
+  onAdd: (m: Membership) => void;
+  onUse: (id: string, note: string) => void;
+  onCancel: (id: string) => void;
+}) {
+  const [showNew, setShowNew] = useState(false);
+  const today = _fmtDate(new Date());
+  const statusOf = (m: Membership) => {
+    if (m.usedUses >= m.includedUses) return { label: "Sin cupos", color: "#c0392b", bg: "rgba(192,57,43,.08)" };
+    if (m.endDate < today) return { label: "Vencida", color: "#8a6d00", bg: "#fff9c4" };
+    const daysLeft = Math.ceil((new Date(m.endDate + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime()) / 86400000);
+    if (daysLeft <= 5) return { label: `Por vencer · ${daysLeft}d`, color: "#e8a020", bg: "rgba(232,160,32,.12)" };
+    return { label: "Activa", color: "#2e7d32", bg: "rgba(76,175,80,.10)" };
+  };
+  const active = memberships.filter(m => m.endDate >= today && m.usedUses < m.includedUses);
+  const income = memberships.reduce((sum, m) => sum + (m.price || 0), 0);
+
+  return (
+    <div className="service-section" style={{ padding: "16px 16px", maxWidth: 920, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
+      <div className="row between" style={{ marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div className="sk-title text-2xl">Mensualidades</div>
+          <div className="sk-mono text-xs muted">{active.length} activas · ${income.toLocaleString("es-CO")} registrados</div>
+        </div>
+        <button className="action ink" onClick={() => setShowNew(true)}><Icon d={I.plus} size={14} /> Nueva mensualidad</button>
+      </div>
+
+      <div className="dash-kanban-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
+        <div className="sk-box p-4"><div className="sk-mono text-xs tracked muted">ACTIVAS</div><div className="sk-title text-3xl">{active.length}</div></div>
+        <div className="sk-box p-4"><div className="sk-mono text-xs tracked muted">USOS DISPONIBLES</div><div className="sk-title text-3xl">{memberships.reduce((s, m) => s + Math.max(0, m.includedUses - m.usedUses), 0)}</div></div>
+        <div className="sk-box p-4"><div className="sk-mono text-xs tracked muted">VENTAS</div><div className="sk-title text-3xl">${income.toLocaleString("es-CO")}</div></div>
+      </div>
+
+      {memberships.length === 0 ? (
+        <div className="placeholder" style={{ borderRadius: 12, padding: 48, textAlign: "center" }}>
+          No hay mensualidades. Vende el plan en Loyverse y registralo aqui para controlar cupos y vencimiento.
+        </div>
+      ) : (
+        <div className="stack gap-3">
+          {memberships.map(m => {
+            const st = statusOf(m);
+            const left = Math.max(0, m.includedUses - m.usedUses);
+            return (
+              <div key={m.id} className="sk-box p-4" style={{ borderColor: st.color }}>
+                <div className="row between" style={{ alignItems: "flex-start", gap: 12 }}>
+                  <div>
+                    <div className="row gap-2" style={{ flexWrap: "wrap" }}>
+                      <div className="sk-title text-xl">{m.clientName}</div>
+                      <span className="chip" style={{ color: st.color, background: st.bg, borderColor: st.color }}>{st.label}</span>
+                    </div>
+                    <div className="text-sm sub">{m.planName} · ${m.price.toLocaleString("es-CO")}</div>
+                    <div className="sk-mono text-xs muted">{m.startDate} → {m.endDate}{m.clientPhone ? ` · ${m.clientPhone}` : ""}</div>
+                    {m.loyverseReceipt && <div className="sk-mono text-xs muted">Loyverse: {m.loyverseReceipt}</div>}
+                  </div>
+                  <div className="stack" style={{ alignItems: "flex-end", gap: 6 }}>
+                    <div className="sk-title text-2xl">{left}/{m.includedUses}</div>
+                    <div className="sk-mono text-xs muted">cupos disponibles</div>
+                    <button className="action accent" disabled={left <= 0 || m.endDate < today} onClick={() => onUse(m.id, "Lavado registrado")}>Registrar uso</button>
+                  </div>
+                </div>
+                <div className="prog-bar" style={{ marginTop: 12 }}><div className="prog-bar-fill" style={{ width: `${Math.min(100, (m.usedUses / Math.max(1, m.includedUses)) * 100)}%` }} /></div>
+                {m.notes && <div className="text-sm sub" style={{ marginTop: 8 }}>{m.notes}</div>}
+                {m.uses.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="sk-mono text-xs tracked muted">USOS</div>
+                    {m.uses.slice(0, 4).map(u => <div key={u.id} className="list-row"><span>{u.note}</span><span className="sk-mono text-xs muted">{u.date}</span></div>)}
+                  </div>
+                )}
+                <div className="row" style={{ justifyContent: "flex-end", marginTop: 8 }}>
+                  <button className="action" onClick={() => onCancel(m.id)}>Cerrar plan</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showNew && <MembershipModal onClose={() => setShowNew(false)} onAdd={m => { onAdd(m); setShowNew(false); }} />}
+    </div>
+  );
+}
+
+function MembershipModal({ onClose, onAdd }: { onClose: () => void; onAdd: (m: Membership) => void }) {
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [planName, setPlanName] = useState("Lavado mensual");
+  const [price, setPrice] = useState("100000");
+  const [startDate, setStartDate] = useState(_fmtDate(new Date()));
+  const [durationDays, setDurationDays] = useState("30");
+  const [includedUses, setIncludedUses] = useState("10");
+  const [loyverseReceipt, setLoyverseReceipt] = useState("");
+  const [notes, setNotes] = useState("");
+  const endDate = _addDaysTo(startDate, Math.max(1, Number(durationDays) || 30) - 1);
+  const canAdd = clientName.trim() && Number(price) > 0 && Number(includedUses) > 0;
+  const submit = () => {
+    if (!canAdd) return;
+    onAdd({
+      id: Date.now().toString(36),
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+      planName: planName.trim() || "Mensualidad",
+      price: Number(price) || 0,
+      startDate,
+      endDate,
+      includedUses: Number(includedUses) || 1,
+      usedUses: 0,
+      notes,
+      loyverseReceipt: loyverseReceipt.trim(),
+      createdAt: new Date().toISOString(),
+      uses: [],
+    });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box">
+        <div className="row between" style={{ marginBottom: 16 }}>
+          <div>
+            <div className="sk-title text-xl">Nueva mensualidad</div>
+            <div className="sk-mono text-xs muted">Cobro en Loyverse + control de cupos aqui</div>
+          </div>
+          <span className="serv-tag">PLAN</span>
+        </div>
+        <div className="field-group"><div className="field-label">Cliente *</div><input className="field-input" value={clientName} onChange={e => setClientName(e.target.value)} autoFocus /></div>
+        <div className="field-group"><div className="field-label">Telefono</div><input className="field-input" value={clientPhone} onChange={e => setClientPhone(e.target.value)} /></div>
+        <div className="field-group"><div className="field-label">Plan</div><input className="field-input" value={planName} onChange={e => setPlanName(e.target.value)} /></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="field-group"><div className="field-label">Precio</div><input className="field-input" type="number" value={price} onChange={e => setPrice(e.target.value)} /></div>
+          <div className="field-group"><div className="field-label">Cupos</div><input className="field-input" type="number" value={includedUses} onChange={e => setIncludedUses(e.target.value)} /></div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="field-group"><div className="field-label">Inicio</div><input className="field-input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
+          <div className="field-group"><div className="field-label">Duracion dias</div><input className="field-input" type="number" value={durationDays} onChange={e => setDurationDays(e.target.value)} /></div>
+        </div>
+        <div className="sk-mono text-xs muted" style={{ marginBottom: 12 }}>Vence: {endDate}</div>
+        <div className="field-group"><div className="field-label">Recibo Loyverse</div><input className="field-input" value={loyverseReceipt} onChange={e => setLoyverseReceipt(e.target.value)} placeholder="Opcional" /></div>
+        <div className="field-group"><div className="field-label">Notas</div><textarea className="field-input" rows={2} value={notes} onChange={e => setNotes(e.target.value)} /></div>
+        <div className="row gap-3" style={{ marginTop: 16 }}>
+          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button className="action ink" onClick={submit} style={{ flex: 2 }} disabled={!canAdd}>Crear mensualidad</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AssignTaskModal({ team, onAdd, onClose }: { team: any[]; onAdd: (t: AppTask) => void; onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [assignedTo, setAssignedTo] = useState(team[0]?.id || "");
@@ -3121,6 +3292,9 @@ export default function App() {
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     try { return JSON.parse(localStorage.getItem("cwb_appointments") || "[]"); } catch { return []; }
   });
+  const [memberships, setMemberships] = useState<Membership[]>(() => {
+    try { return JSON.parse(localStorage.getItem("cwb_memberships") || "[]"); } catch { return []; }
+  });
   const [showApptModal, setShowApptModal] = useState(false);
   const [dashTab, setDashTab] = useState("lista");
   const [lunch, setLunch] = useState(false);
@@ -3147,7 +3321,7 @@ export default function App() {
     loadShopDataOnce().then(data => {
       if (!data) {
         // First time — migrate existing localStorage data to Firestore
-        saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift, appointments, empLunch });
+        saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, shift, appointments, memberships, empLunch });
         // Rebuild PIN cache from localStorage data
         const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
         localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
@@ -3158,6 +3332,7 @@ export default function App() {
         if (Array.isArray(data.services)) setServices(data.services);
         if (Array.isArray(data.tasks)) setTasks(data.tasks);
         if (Array.isArray(data.appointments)) setAppointments(data.appointments);
+        if (Array.isArray((data as any).memberships)) setMemberships((data as any).memberships);
         if (data.shift && typeof data.shift === "object") setShift(data.shift);
         if (data.empLunch && typeof data.empLunch === "object") setEmpLunch(data.empLunch);
         if (data.adminPassword) localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
@@ -3200,6 +3375,10 @@ export default function App() {
     localStorage.setItem("cwb_tasks", JSON.stringify(tasks));
     if (fbReady.current) saveShopData({ tasks }).catch(e => console.error("Firestore tasks:", e));
   }, [tasks]);
+  useEffect(() => {
+    localStorage.setItem("cwb_memberships", JSON.stringify(memberships));
+    if (fbReady.current) saveShopData({ memberships }).catch(e => console.error("Firestore memberships:", e));
+  }, [memberships]);
   useEffect(() => {
     localStorage.setItem("cwb_team", JSON.stringify(team));
     if (fbReady.current) saveShopData({ team }).catch(e => console.error("Firestore team:", e));
@@ -3255,6 +3434,9 @@ export default function App() {
   const addTask         = (t: AppTask) => setTasks(prev => [t, ...prev]);
   const toggleTask      = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
   const updateTask      = (id: string, changes: Partial<AppTask>) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...changes } : t));
+  const addMembership   = (m: Membership) => setMemberships(prev => [m, ...prev]);
+  const useMembership   = (id: string, note: string) => setMemberships(prev => prev.map(m => m.id === id ? { ...m, usedUses: Math.min(m.includedUses, m.usedUses + 1), uses: [{ id: Date.now().toString(36), date: _fmtDate(new Date()), note, createdAt: new Date().toISOString() }, ...(m.uses || [])] } : m));
+  const cancelMembership = (id: string) => setMemberships(prev => prev.map(m => m.id === id ? { ...m, endDate: _addDays(-1), notes: m.notes ? `${m.notes}\nPlan cerrado manualmente.` : "Plan cerrado manualmente." } : m));
   const addAppointment  = (a: Appointment) => setAppointments(prev => [a, ...prev]);
   const logout = () => { sessionStorage.removeItem("cwb_session"); setSession(null); };
 
@@ -3263,8 +3445,8 @@ export default function App() {
     if (fbReady.current) saveShopData({ appointments });
   }, [appointments]);
 
-  const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
-  const breadcrumbs: Record<string, string> = { dash: "HOY · " + _fmtDate(new Date()), servicios: "BICICLETAS · SERVICIO", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "TAREAS · " + _fmtDate(new Date()), cal: "CALENDARIO · SEMANA ACTUAL", ops: "PLANTILLAS" };
+  const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", membresias: "Mensualidades", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
+  const breadcrumbs: Record<string, string> = { dash: "HOY · " + _fmtDate(new Date()), servicios: "BICICLETAS · SERVICIO", membresias: "PLANES · CLIENTES", lunch: "FEATURE · NO MOLESTAR", turno: "FICHAJES · HOY", perfil: "EQUIPO › PERFIL", tareas: "TAREAS · " + _fmtDate(new Date()), cal: "CALENDARIO · SEMANA ACTUAL", ops: "PLANTILLAS" };
 
   const trackParam = new URLSearchParams(window.location.search).get("track");
   if (trackParam) {
@@ -3402,6 +3584,7 @@ export default function App() {
           <div className="content-area">
             <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
               {section === "servicios" && <ServiceSection services={services} onAdvancePhase={advancePhase} onNewService={() => { setServiceModalDate(undefined); setShowNewService(true); }} onUpdateService={updateService} onDeleteService={deleteService} team={team} />}
+              {section === "membresias" && <MembershipSection memberships={memberships} onAdd={addMembership} onUse={useMembership} onCancel={cancelMembership} />}
               {section === "dash" && dashTab === "lista" && <DashLista lunchState={lunch} shiftState={shift} team={team} onRemove={removeMember} />}
               {section === "dash" && dashTab === "kanban" && <DashKanban />}
               {section === "dash" && dashTab === "timeline" && <DashTimeline />}
