@@ -183,6 +183,7 @@ function urgencyInfo(neededByDate: string | undefined): { label: string; color: 
 
 const LOGO_SRC = "/logos/negativo.png";
 const LOGO_DARK_BG_SRC = "/logos/principal-1.png";
+const LOGO_START_SRC = "/logos/inicio-w.svg";
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -2940,7 +2941,7 @@ function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session)
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#1a0d1a", padding: 16 }}>
       <style>{CSS}</style>
       <div style={{ background: "#221222", borderRadius: 16, padding: 40, width: "100%", maxWidth: 360, textAlign: "center", boxShadow: "0 4px 32px #0006" }}>
-        <Logo height={48} darkBg />
+        <img src={LOGO_START_SRC} alt="Capital Wo-Man Bikes" style={{ height: 150, display: "block", margin: "0 auto", objectFit: "contain" }} />
         <div style={{ marginTop: 24, marginBottom: 16, color: "#c8a8c8", fontFamily: "monospace", fontSize: 12, letterSpacing: 3 }}>ACCESO ADMINISTRACIÓN</div>
         {loading ? (
           <div style={{ color: "#6a4a6a", fontFamily: "monospace", fontSize: 12, padding: "20px 0", letterSpacing: 2 }}>CARGANDO...</div>
