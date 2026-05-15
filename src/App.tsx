@@ -1501,6 +1501,7 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showApptModal, setShowApptModal] = useState(false);
   const [preDate, setPreDate] = useState<string | undefined>(undefined);
+  const [editingTask, setEditingTask] = useState<AppTask | null>(null);
   const [editingSvc, setEditingSvc] = useState<BikeService | null>(null);
 
   const DAY_NAMES = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
@@ -1609,11 +1610,12 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
               {dayTasks.map(t => {
                 const person = team.find(p => p.id === t.assignedTo);
                 return (
-                  <div key={t.id} className="cal-event ev-task" style={{ opacity: t.done ? .45 : 1 }} title={t.title}>
+                  <div key={t.id} className="cal-event ev-task" onClick={() => setEditingTask(t)} style={{ opacity: t.done ? .45 : 1, cursor: "pointer" }} title={`${t.title} · editar`}>
                     <div className="sk-mono text-xs" style={{ color: "#1d4ed8" }}>
                       {t.hasTime ? `${t.startTime}–${t.endTime}` : "todo el día"}
                     </div>
                     <div style={{ fontSize: 11, fontWeight: 700, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</div>
+                    <div style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 2 }}>editar</div>
                     {person && <div style={{ fontSize: 10, color: "#3b82f6" }}>· {person.name}</div>}
                   </div>
                 );
@@ -1659,6 +1661,18 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
       )}
 
       {/* Modal edición de servicio desde el calendario */}
+      {editingTask && (
+        <EditTaskCalModal
+          task={editingTask}
+          team={team}
+          onClose={() => setEditingTask(null)}
+          onSave={(id, changes) => {
+            setTasks(ts => ts.map(t => t.id === id ? { ...t, ...changes } : t));
+            setEditingTask(null);
+          }}
+        />
+      )}
+
       {editingSvc && onUpdateService && (
         <EditServiceCalModal
           service={editingSvc}
@@ -1667,6 +1681,104 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
           onSave={(id, changes) => { onUpdateService(id, changes); setEditingSvc(null); }}
         />
       )}
+    </div>
+  );
+}
+
+function EditTaskCalModal({ task, team, onClose, onSave }: {
+  task: AppTask;
+  team: any[];
+  onClose: () => void;
+  onSave: (id: string, changes: Partial<AppTask>) => void;
+}) {
+  const [title, setTitle] = useState(task.title);
+  const [assignedTo, setAssignedTo] = useState(task.assignedTo);
+  const [tag, setTag] = useState(task.tag || "GENERAL");
+  const [date, setDate] = useState(task.date || _fmtDate(new Date()));
+  const [hasTime, setHasTime] = useState(!!task.hasTime);
+  const [startTime, setStartTime] = useState(task.startTime || "09:00");
+  const [endTime, setEndTime] = useState(task.endTime || "10:00");
+  const [done, setDone] = useState(!!task.done);
+  const tags = ["GENERAL", "TALLER", "TIENDA", "LIMPIEZA", "CAJA", "PEDIDO"];
+
+  const handleSave = () => {
+    if (!title.trim()) return;
+    onSave(task.id, {
+      title: title.trim(),
+      assignedTo,
+      tag,
+      date,
+      hasTime,
+      startTime: hasTime ? startTime : "",
+      endTime: hasTime ? endTime : "",
+      done,
+    });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box">
+        <div className="row between" style={{ marginBottom: 16 }}>
+          <div>
+            <div className="sk-title text-xl">Editar tarea</div>
+            <div className="sk-mono text-xs muted">Cambiar fecha la mueve en el calendario</div>
+          </div>
+          <span className="task-tag-b">TAREA</span>
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Descripcion</div>
+          <input className="field-input" value={title} onChange={e => setTitle(e.target.value)} autoFocus />
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="field-group">
+            <div className="field-label">Asignada a</div>
+            <select className="field-input" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
+              {team.map(m => <option key={m.id} value={m.id}>{m.name} · {m.role}</option>)}
+            </select>
+          </div>
+          <div className="field-group">
+            <div className="field-label">Fecha</div>
+            <input className="field-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="field-group">
+          <div className="field-label">Categoria</div>
+          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+            {tags.map(t => <button key={t} className={"action" + (tag === t ? " accent" : "")} style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => setTag(t)}>{t}</button>)}
+          </div>
+        </div>
+
+        <label className="row gap-3" style={{ cursor: "pointer", padding: "8px 0" }}>
+          <input type="checkbox" checked={hasTime} onChange={e => setHasTime(e.target.checked)} style={{ width: 16, height: 16 }} />
+          <span className="text-sm">Tiene hora especifica</span>
+        </label>
+
+        {hasTime && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div className="field-group">
+              <div className="field-label">Hora inicio</div>
+              <input className="field-input" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} />
+            </div>
+            <div className="field-group">
+              <div className="field-label">Hora fin</div>
+              <input className="field-input" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        <label className="row gap-3" style={{ cursor: "pointer", padding: "8px 0 14px" }}>
+          <input type="checkbox" checked={done} onChange={e => setDone(e.target.checked)} style={{ width: 16, height: 16 }} />
+          <span className="text-sm">Tarea completada</span>
+        </label>
+
+        <div className="row gap-3">
+          <button className="action" onClick={onClose} style={{ flex: 1 }}>Cancelar</button>
+          <button className="action ink" onClick={handleSave} style={{ flex: 2 }} disabled={!title.trim()}>Guardar cambios</button>
+        </div>
+      </div>
     </div>
   );
 }
