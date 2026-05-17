@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import emailjs from '@emailjs/browser';
-import { saveShopData, loadShopDataOnce } from './firebase';
+import { useState, useEffect, useMemo, useRef } from "react";
+import type { ShopData } from './firebase';
 
 // ─── Configuración EmailJS (cámbiala desde la interfaz o aquí) ───────────────
 const EMAILJS_SERVICE_ID          = "service_dzchw0a";
@@ -8,6 +7,18 @@ const EMAILJS_TEMPLATE_ID         = "2ux0vlp";
 const EMAILJS_SERVICE_TEMPLATE_ID = "template_fcgenmc";
 const EMAILJS_PUBLIC_KEY          = "UgKvCtUeZVka8ji8t";
 const ADMIN_EMAIL                 = "capital.woman.bikes@gmail.com";
+
+const loadShopDataOnce = async () => (await import("./firebase")).loadShopDataOnce();
+const saveShopData = async (data: Partial<ShopData>) => (await import("./firebase")).saveShopData(data);
+const sendEmail = async (
+  serviceId: string,
+  templateId: string,
+  params: Record<string, unknown>,
+  publicKey: string
+) => {
+  const emailjs = (await import("@emailjs/browser")).default;
+  return emailjs.send(serviceId, templateId, params, publicKey);
+};
 
 // ─── Fases del servicio de bici ──────────────────────────────────────────────
 const PHASES = [
@@ -175,6 +186,33 @@ const SERVICES_CATALOG: { category: string; items: { code: string; name: string;
 
 // Listado plano para búsquedas rápidas
 const SERVICES_FLAT = SERVICES_CATALOG.flatMap(g => g.items);
+const SERVICE_VALUE_BY_CODE = new Map(SERVICES_FLAT.map(item => [item.code, `${item.code} - ${item.name}`]));
+
+function normalizeLookup(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+function resolveServiceValue(input: string): string {
+  const raw = input.trim();
+  if (!raw) return "";
+
+  const exactCode = SERVICE_VALUE_BY_CODE.get(raw.toUpperCase());
+  if (exactCode) return exactCode;
+
+  const query = normalizeLookup(raw);
+  const match = SERVICES_FLAT.find(item => {
+    const code = normalizeLookup(item.code);
+    const name = normalizeLookup(item.name);
+    const value = normalizeLookup(`${item.code} ${item.name}`);
+    return code === query || code.startsWith(query) || name.includes(query) || value.includes(query);
+  });
+
+  return match ? `${match.code} - ${match.name}` : raw;
+}
 
 function buildTrackingUrl(service: BikeService): string {
   const phase = PHASES.find(p => p.id === service.phase);
@@ -1675,8 +1713,8 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
       </div>
 
       {showTaskModal && (
-        <AssignTaskModal team={team} onClose={() => setShowTaskModal(false)}
-          onAdd={task => { setTasks(ts => [{ ...task, date: preDate || task.date }, ...ts]); }} />
+        <AssignTaskModal team={team} initialDate={preDate} onClose={() => setShowTaskModal(false)}
+          onAdd={task => { setTasks(ts => [task, ...ts]); }} />
       )}
       {showApptModal && (
         <AppointmentModal team={team} initialDate={preDate} onClose={() => setShowApptModal(false)}
@@ -1825,9 +1863,10 @@ function EditServiceCalModal({ service, team, onClose, onSave }: {
 
   const handleSave = () => {
     if (!bikeDescription.trim()) return;
+    const resolvedServiceType = resolveServiceValue(serviceType);
     onSave(service.id, {
       bikeDescription: bikeDescription.trim(),
-      serviceType: serviceType || undefined,
+      serviceType: resolvedServiceType || undefined,
       notes,
       neededByDate: neededByDate || undefined,
       technicianId: technicianId || undefined,
@@ -1853,18 +1892,12 @@ function EditServiceCalModal({ service, team, onClose, onSave }: {
         <textarea rows={2} style={{ ...inp, resize: "vertical" as const }} value={bikeDescription} onChange={e => setBikeDescription(e.target.value)} autoFocus />
 
         <label style={lbl}>Servicio solicitado</label>
-        <select style={{ ...inp }} value={serviceType} onChange={e => setServiceType(e.target.value)}>
-          <option value="">Sin especificar</option>
-          {SERVICES_CATALOG.map(g => (
-            <optgroup key={g.category} label={g.category}>
-              {g.items.map(item => (
-                <option key={item.code} value={`${item.code} - ${item.name}`}>
-                  {item.name} · ${item.price.toLocaleString("es-CO")}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <ServiceTypeInput
+          style={{ ...inp }}
+          value={serviceType}
+          onChange={setServiceType}
+          placeholder="Escribe codigo, nombre o selecciona..."
+        />
 
         <label style={lbl}>Técnico asignado</label>
         <select style={{ ...inp }} value={technicianId} onChange={e => setTechnicianId(e.target.value)}>
@@ -1895,6 +1928,38 @@ function EditServiceCalModal({ service, team, onClose, onSave }: {
         </div>
       </div>
     </div>
+  );
+}
+
+function ServiceTypeInput({ value, onChange, style, placeholder = "Escribe codigo o nombre..." }: {
+  value: string;
+  onChange: (value: string) => void;
+  style: React.CSSProperties;
+  placeholder?: string;
+}) {
+  const listId = useMemo(() => `services-${Math.random().toString(36).slice(2)}`, []);
+
+  return (
+    <>
+      <input
+        style={style}
+        value={value}
+        list={listId}
+        onChange={e => onChange(e.target.value)}
+        onBlur={e => onChange(resolveServiceValue(e.target.value))}
+        placeholder={placeholder}
+        autoComplete="off"
+      />
+      <datalist id={listId}>
+        {SERVICES_FLAT.map(item => (
+          <option
+            key={item.code}
+            value={`${item.code} - ${item.name}`}
+            label={`${item.code} · ${item.name} · $${item.price.toLocaleString("es-CO")}`}
+          />
+        ))}
+      </datalist>
+    </>
   );
 }
 
@@ -2188,7 +2253,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
       id, clientName: clientName.trim(), clientEmail: clientEmail.trim(),
       bikeDescription: bikeDescription.trim(), date, phase: 0,
       createdAt: new Date().toISOString(), notes,
-      serviceType: serviceType || undefined,
+      serviceType: resolveServiceValue(serviceType) || undefined,
       startTime, endTime,
       technicianId: technicianId || undefined,
       paymentStatus,
@@ -2201,7 +2266,7 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
     onClose();
     // Email se envía en segundo plano sin bloquear el cierre del modal
     const trackingLink = buildTrackingUrl(newService);
-    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
+    sendEmail(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
       email: newService.clientEmail,
       client_email: newService.clientEmail,
       client_name: newService.clientName,
@@ -2223,18 +2288,12 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate }: { onClose: 
         <label style={lbl}>Descripción de la bici *</label>
         <input style={inp} value={bikeDescription} onChange={e => setBikeDescription(e.target.value)} placeholder="Trek Marlin azul 2022" />
         <label style={lbl}>Servicio solicitado</label>
-        <select style={{ ...inp, marginBottom: 10 }} value={serviceType} onChange={e => setServiceType(e.target.value)}>
-          <option value="">Seleccionar servicio…</option>
-          {SERVICES_CATALOG.map(g => (
-            <optgroup key={g.category} label={g.category}>
-              {g.items.map(item => (
-                <option key={item.code} value={`${item.code} - ${item.name}`}>
-                  {item.name} · ${item.price.toLocaleString("es-CO")}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <ServiceTypeInput
+          style={{ ...inp, marginBottom: 10 }}
+          value={serviceType}
+          onChange={setServiceType}
+          placeholder="Escribe codigo, nombre o selecciona..."
+        />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
             <label style={lbl}>Fecha de ingreso</label>
@@ -2325,7 +2384,7 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
     if (!ph) { alert("Avanza primero a una fase."); return; }
     setSending(s.id);
     try {
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
+      await sendEmail(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
         email: s.clientEmail,
         client_email: s.clientEmail,
         client_name: s.clientName,
@@ -2351,8 +2410,8 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
   const phColor = (p: number) => PHASES.find(ph => ph.id === p)?.color || "#888";
   const phName  = (p: number) => p === 0 ? "Recibida" : PHASES.find(ph => ph.id === p)?.name || "";
   const phIcon  = (p: number) => p === 0 ? "📋" : PHASES.find(ph => ph.id === p)?.icon || "";
-  const active  = services.filter(s => s.phase < 4);
-  const done    = services.filter(s => s.phase === 4);
+  const active  = useMemo(() => services.filter(s => s.phase < 4), [services]);
+  const done    = useMemo(() => services.filter(s => s.phase === 4), [services]);
 
   return (
     <div className="service-section" style={{ padding: "16px 16px", maxWidth: 700, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
@@ -2682,11 +2741,11 @@ function MembershipModal({ onClose, onAdd }: { onClose: () => void; onAdd: (m: M
   );
 }
 
-function AssignTaskModal({ team, onAdd, onClose }: { team: any[]; onAdd: (t: AppTask) => void; onClose: () => void }) {
+function AssignTaskModal({ team, initialDate, onAdd, onClose }: { team: any[]; initialDate?: string; onAdd: (t: AppTask) => void; onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [assignedTo, setAssignedTo] = useState(team[0]?.id || "");
   const [tag, setTag] = useState("GENERAL");
-  const [date, setDate] = useState(_addDays(0));
+  const [date, setDate] = useState(initialDate || _addDays(0));
   const [hasTime, setHasTime] = useState(false);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
@@ -3130,7 +3189,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     setLoading(true);
     setMsg("");
     try {
-      await emailjs.send(
+      await sendEmail(
         EMAILJS_SERVICE_ID,
         EMAILJS_TEMPLATE_ID,
         { email: ADMIN_EMAIL, code, app_name: "Capital Wo-Man Bikes" },
@@ -3201,7 +3260,6 @@ function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session)
   const [showChangePwd, setShowChangePwd] = useState(false);
 
   const handleLogin = () => {
-    if (loading) return;
     if (pwd === getAdminPassword()) {
       const s: Session = { type: "admin" };
       sessionStorage.setItem("cwb_session", JSON.stringify(s));
@@ -3236,10 +3294,7 @@ function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session)
       <div style={{ background: "#221222", borderRadius: 16, padding: 40, width: "100%", maxWidth: 360, textAlign: "center", boxShadow: "0 4px 32px #0006" }}>
         <img src={LOGO_START_SRC} alt="Capital Wo-Man Bikes" style={{ height: 150, display: "block", margin: "0 auto", objectFit: "contain" }} />
         <div style={{ marginTop: 24, marginBottom: 16, color: "#c8a8c8", fontFamily: "monospace", fontSize: 12, letterSpacing: 3 }}>ACCESO ADMINISTRACIÓN</div>
-        {loading ? (
-          <div style={{ color: "#6a4a6a", fontFamily: "monospace", fontSize: 12, padding: "20px 0", letterSpacing: 2 }}>CARGANDO...</div>
-        ) : (
-          <>
+        <>
             <input
               type="password"
               value={pwd}
@@ -3256,14 +3311,14 @@ function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session)
             >
               ENTRAR
             </button>
+            {loading && <div style={{ color: "#6a4a6a", fontFamily: "monospace", fontSize: 10, marginTop: 8, letterSpacing: 1 }}>Sincronizando nube...</div>}
             <button
               onClick={() => setShowChangePwd(true)}
               style={{ marginTop: 16, background: "none", border: "none", color: "#6a4a6a", fontSize: 12, cursor: "pointer", fontFamily: "monospace", textDecoration: "underline" }}
             >
               Cambiar contraseña
             </button>
-          </>
-        )}
+        </>
       </div>
       {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
     </div>
@@ -3368,34 +3423,55 @@ export default function App() {
   };
 
   useEffect(() => {
-    localStorage.setItem("cwb_services", JSON.stringify(services));
-    if (fbReady.current) saveShopData({ services }).catch(e => console.error("Firestore services:", e));
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_services", JSON.stringify(services));
+      if (fbReady.current) saveShopData({ services }).catch(e => console.error("Firestore services:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [services]);
   useEffect(() => {
-    localStorage.setItem("cwb_tasks", JSON.stringify(tasks));
-    if (fbReady.current) saveShopData({ tasks }).catch(e => console.error("Firestore tasks:", e));
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_tasks", JSON.stringify(tasks));
+      if (fbReady.current) saveShopData({ tasks }).catch(e => console.error("Firestore tasks:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [tasks]);
   useEffect(() => {
-    localStorage.setItem("cwb_memberships", JSON.stringify(memberships));
-    if (fbReady.current) saveShopData({ memberships }).catch(e => console.error("Firestore memberships:", e));
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_memberships", JSON.stringify(memberships));
+      if (fbReady.current) saveShopData({ memberships }).catch(e => console.error("Firestore memberships:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [memberships]);
   useEffect(() => {
-    localStorage.setItem("cwb_team", JSON.stringify(team));
-    if (fbReady.current) saveShopData({ team }).catch(e => console.error("Firestore team:", e));
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_team", JSON.stringify(team));
+      if (fbReady.current) saveShopData({ team }).catch(e => console.error("Firestore team:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [team]);
   useEffect(() => {
-    localStorage.setItem("cwb_shift", JSON.stringify(shift));
-    if (fbReady.current) saveShopData({ shift }).catch(e => console.error("Firestore shift:", e));
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_shift", JSON.stringify(shift));
+      if (fbReady.current) saveShopData({ shift }).catch(e => console.error("Firestore shift:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [shift]);
   useEffect(() => {
-    localStorage.setItem("cwb_emp_lunch", JSON.stringify(empLunch));
-    if (fbReady.current) saveShopData({ empLunch });
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_emp_lunch", JSON.stringify(empLunch));
+      if (fbReady.current) saveShopData({ empLunch }).catch(e => console.error("Firestore empLunch:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [empLunch]);
   useEffect(() => {
-    localStorage.setItem("cwb_ext", JSON.stringify(extendedData));
-    const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
-    localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
-    if (fbReady.current) saveShopData({ extendedData });
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_ext", JSON.stringify(extendedData));
+      const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
+      localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
+      if (fbReady.current) saveShopData({ extendedData }).catch(e => console.error("Firestore extendedData:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [extendedData, team]);
 
   const addService      = (s: BikeService) => setServices(prev => [s, ...prev]);
@@ -3415,7 +3491,7 @@ export default function App() {
         const phaseMessage = svc.phase === 4
           ? `Tu bicicleta ya está lista para entrega 🚴‍♂️\n\nPuedes acercarte a recogerla en nuestro taller en el horario habitual.\n\nTe recordamos que cuentas con 5 días calendario para recogerla. Pasado este tiempo, se empezará a generar un cobro por bodegaje de $4.000 COP por día, según nuestras políticas.\n\nSi tienes alguna duda o necesitas coordinar la entrega, puedes escribirnos.`
           : ph.msg;
-        emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
+        sendEmail(EMAILJS_SERVICE_ID, EMAILJS_SERVICE_TEMPLATE_ID, {
           email: svc.clientEmail,
           client_email: svc.clientEmail,
           client_name: svc.clientName,
@@ -3441,8 +3517,11 @@ export default function App() {
   const logout = () => { sessionStorage.removeItem("cwb_session"); setSession(null); };
 
   useEffect(() => {
-    localStorage.setItem("cwb_appointments", JSON.stringify(appointments));
-    if (fbReady.current) saveShopData({ appointments });
+    const id = window.setTimeout(() => {
+      localStorage.setItem("cwb_appointments", JSON.stringify(appointments));
+      if (fbReady.current) saveShopData({ appointments }).catch(e => console.error("Firestore appointments:", e));
+    }, 350);
+    return () => window.clearTimeout(id);
   }, [appointments]);
 
   const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", membresias: "Mensualidades", lunch: "Almuerzo / No molestar", turno: "Fichajes y turnos", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", cal: "Calendario", ops: "1:1 y Onboarding" };
