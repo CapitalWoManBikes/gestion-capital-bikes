@@ -1494,7 +1494,7 @@ function ProfileSection({ team = INITIAL_TEAM, extendedData = {}, onEditMember }
 
 // ─── SECCIÓN 4: Tareas ───────────────────────────────────────────────────────
 function TasksSection({ tasks, team, onToggle, onUpdate, onAssign }: { tasks: AppTask[]; team: any[]; onToggle: (id: string) => void; onUpdate: (id: string, changes: Partial<AppTask>) => void; onAssign: () => void }) {
-  const [view, setView] = useState("lista");
+  const [view, setView] = useState<"pendientes" | "historial">("pendientes");
   const getMember = (id: string) => team.find(m => m.id === id);
   const pending = tasks.filter(t => !t.done);
   const done    = tasks.filter(t => t.done);
@@ -1503,8 +1503,8 @@ function TasksSection({ tasks, team, onToggle, onUpdate, onAssign }: { tasks: Ap
     <div className="fade-in" style={{ flex: 1 }}>
       <div className="row gap-2 between" style={{ padding: "12px 18px", borderBottom: "1.4px dashed var(--line)", flexWrap: "wrap" }}>
         <div className="row gap-2">
-          <button className={"action" + (view === "todas" ? " ink" : "")} onClick={() => setView("todas")}>Todas</button>
-          <button className={"action" + (view === "hechas" ? " ink" : "")} onClick={() => setView("hechas")}>Completadas</button>
+          <button className={"action" + (view === "pendientes" ? " ink" : "")} onClick={() => setView("pendientes")}>Pendientes</button>
+          <button className={"action" + (view === "historial" ? " ink" : "")} onClick={() => setView("historial")}>Historial</button>
         </div>
         <button className="action accent" style={{ fontSize: 12 }} onClick={onAssign}>+ Asignar tarea</button>
       </div>
@@ -1516,7 +1516,7 @@ function TasksSection({ tasks, team, onToggle, onUpdate, onAssign }: { tasks: Ap
       )}
 
       <div style={{ padding: "8px 0" }}>
-        {(view === "todas" ? pending : done).map(t => {
+        {(view === "pendientes" ? pending : done).map(t => {
           const member = getMember(t.assignedTo);
           return (
             <div key={t.id} className="task-item">
@@ -1541,8 +1541,11 @@ function TasksSection({ tasks, team, onToggle, onUpdate, onAssign }: { tasks: Ap
             </div>
           );
         })}
-        {view === "todas" && pending.length === 0 && tasks.length > 0 && (
-          <div style={{ textAlign: "center", padding: 32, color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: 12 }}>✅ Todas las tareas completadas</div>
+        {view === "pendientes" && pending.length === 0 && tasks.length > 0 && (
+          <div style={{ textAlign: "center", padding: 32, color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: 12 }}>✅ Todas las tareas pendientes fueron completadas</div>
+        )}
+        {view === "historial" && done.length === 0 && tasks.length > 0 && (
+          <div style={{ textAlign: "center", padding: 32, color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: 12 }}>Aún no hay tareas completadas en el historial</div>
         )}
       </div>
     </div>
@@ -2885,7 +2888,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   const me = team.find(m => m.id === session.id) || { name: session.name, role: session.role, initials: (session.name || "?")[0], id: session.id };
   const todayStr = _fmtDate(new Date());
   const myTasks = tasks.filter(t => t.assignedTo === session.id);
-  const myTodayTasks = myTasks.filter(t => !t.date || t.date === todayStr);
+  const myTodayTasks = myTasks.filter(t => !t.done && (!t.date || t.date === todayStr));
   const myTodayAppts = appointments.filter(a => a.assignedTo === session.id && a.date === todayStr);
   const myTodayBikes = services.filter(s => s.technicianId === session.id && s.date === todayStr && s.phase < 4);
   const myUpcomingAppts = appointments.filter(a => a.assignedTo === session.id && a.date > todayStr)
