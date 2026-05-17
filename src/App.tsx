@@ -1617,9 +1617,8 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
         {days.map((day, i) => {
           const dateStr = _fmtDate(day);
           const isToday = dateStr === todayStr;
-          const dayAppts = appointments.filter(a => a.date === dateStr);
-          const dayTasks = tasks.filter(t => t.date === dateStr);
-          const dayBikes = services.filter(s => s.date === dateStr);
+          const dayTasks = tasks.filter(t => t.date === dateStr && !t.done);
+          const dayBikes = services.filter(s => s.date === dateStr && s.phase < 4);
           return (
             <div key={i} className="cal-day" style={{ background: isToday ? "rgba(108,31,110,.04)" : undefined, minHeight: 120 }}>
               <div className="sk-mono text-xs tracked muted">{DAY_NAMES[i]}</div>
@@ -1654,35 +1653,22 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
                 );
               })}
 
-              {/* Agendamientos — amarillo */}
-              {dayAppts.map(a => {
-                const person = team.find(p => p.id === a.assignedTo);
-                return (
-                  <div key={a.id} className="cal-event ev-service" title={`${a.client} · ${a.service}`}>
-                    <div className="sk-mono text-xs" style={{ color: "#7a5500" }}>{a.startTime}–{a.endTime}</div>
-                    <div style={{ fontSize: 11, fontWeight: 700 }}>{a.client}</div>
-                    <div style={{ fontSize: 10, color: "#7a5500" }}>{a.service}</div>
-                    {person && <div style={{ fontSize: 10, color: "#a07000" }}>· {person.name}</div>}
-                  </div>
-                );
-              })}
-
               {/* Tareas — azul */}
               {dayTasks.map(t => {
                 const person = team.find(p => p.id === t.assignedTo);
                 return (
-                  <div key={t.id} className="cal-event ev-task" onClick={() => setEditingTask(t)} style={{ opacity: t.done ? .45 : 1, cursor: "pointer" }} title={`${t.title} · editar`}>
+                  <div key={t.id} className="cal-event ev-task" onClick={() => setEditingTask(t)} style={{ cursor: "pointer" }} title={`${t.title} · editar`}>
                     <div className="sk-mono text-xs" style={{ color: "#1d4ed8" }}>
                       {t.hasTime ? `${t.startTime}–${t.endTime}` : "todo el día"}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>{t.title}</div>
                     <div style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 2 }}>editar</div>
                     {person && <div style={{ fontSize: 10, color: "#3b82f6" }}>· {person.name}</div>}
                   </div>
                 );
               })}
 
-              {dayAppts.length === 0 && dayTasks.length === 0 && dayBikes.length === 0 && (
+              {dayTasks.length === 0 && dayBikes.length === 0 && (
                 <div style={{ fontSize: 10, color: "var(--ink-3)", fontFamily: "var(--mono)", marginTop: 4 }}>—</div>
               )}
               <button className="cal-add-btn" title="Agregar servicio de bici" onClick={() => onNewBikeService(dateStr)}>+</button>
@@ -1699,16 +1685,12 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
             <span className="sk-mono text-xs muted">Servicios de bicicleta</span>
           </div>
           <div className="row gap-2">
-            <div style={{ width: 12, height: 12, background: "#fff9c4", border: "1.2px solid #c8a800", borderRadius: 3, flexShrink: 0 }} />
-            <span className="sk-mono text-xs muted">Agendamientos internos</span>
-          </div>
-          <div className="row gap-2">
             <div style={{ width: 12, height: 12, background: "#dbeafe", border: "1.2px solid #3b82f6", borderRadius: 3, flexShrink: 0 }} />
             <span className="sk-mono text-xs muted">Tareas internas del equipo</span>
           </div>
         </div>
         <span className="sk-mono text-xs muted">
-          {services.filter(s => s.date === todayStr).length} bicis · {appointments.filter(a => a.date === todayStr).length} appts · {tasks.filter(t => t.date === todayStr && !t.done).length} tareas hoy
+          {services.filter(s => s.date === todayStr && s.phase < 4).length} bicis pendientes · {tasks.filter(t => t.date === todayStr && !t.done).length} tareas pendientes hoy
         </span>
       </div>
 
