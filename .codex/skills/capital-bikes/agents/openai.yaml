@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capital Bikes"
+  short_description: "Guía de trabajo para la app Capital Bikes."
+  default_prompt: "Usa la skill Capital Bikes para trabajar en esta app siguiendo sus comandos, reglas de negocio, Firebase, Loyverse y flujo de despliegue."

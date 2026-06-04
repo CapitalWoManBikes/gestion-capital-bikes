@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capital Bikes Redes"
+  short_description: "Contenido de redes para Capital Wo-Man Bikes."
+  default_prompt: "Usa la skill Capital Bikes Redes para crear copys, reels, historias, parrillas, mensajes de WhatsApp y respuestas comerciales con la voz de marca de Capital Wo-Man Bikes."
