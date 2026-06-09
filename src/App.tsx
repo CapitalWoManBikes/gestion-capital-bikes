@@ -2334,7 +2334,10 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
   const nowStr = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
   const today = _fmtDate(new Date());
   const todayRecords = attendanceRecords.filter(r => r.date === today);
-  const todayPresenceHours = todayRecords.reduce((sum, r) => sum + (Number(r.hoursWorked) || 0), 0);
+  const lunchMinutesFromRecords = (records: LunchRecord[]) => records.reduce((sum, r) => sum + (Number(r.minutes) || (r.status === "abierto" ? minutesBetween(r.startTime, new Date().toISOString()) : 0)), 0);
+  const netHours = (grossHours: number, lunchMinutes: number) => Math.max(0, Math.round((grossHours - (lunchMinutes / 60)) * 100) / 100);
+  const todayLunchMinutes = lunchMinutesFromRecords(lunchRecords.filter(r => r.date === today));
+  const todayPresenceHours = netHours(todayRecords.reduce((sum, r) => sum + (r.status === "abierto" ? hoursBetween(r.entryTime, new Date().toISOString()) : (Number(r.hoursWorked) || 0)), 0), todayLunchMinutes);
   const todayAutoClosed = todayRecords.filter(r => r.status === "cerrado_automatico").length;
   const weekStart = (() => { const d = new Date(); const day = d.getDay() || 7; d.setDate(d.getDate() - day + 1); return _fmtDate(d); })();
   const weeklyRecords = attendanceRecords.filter(r => r.date >= weekStart && r.date <= today);
@@ -2345,8 +2348,9 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
   const timesheetRecords = attendanceRecords.filter(r => r.employeeId === selectedPersonId && r.date.startsWith(timesheetMonth));
   const timesheetLunchRecords = lunchRecords.filter(r => r.employeeId === selectedPersonId && r.date.startsWith(timesheetMonth));
   const recordHours = (r: AttendanceRecord) => r.status === "abierto" ? hoursBetween(r.entryTime, new Date().toISOString()) : (Number(r.hoursWorked) || 0);
-  const hoursForDate = (date: string) => timesheetRecords.filter(r => r.date === date).reduce((sum, r) => sum + recordHours(r), 0);
-  const lunchMinutesForDate = (date: string) => timesheetLunchRecords.filter(r => r.date === date).reduce((sum, r) => sum + (Number(r.minutes) || (r.status === "abierto" ? minutesBetween(r.startTime, new Date().toISOString()) : 0)), 0);
+  const grossHoursForDate = (date: string) => timesheetRecords.filter(r => r.date === date).reduce((sum, r) => sum + recordHours(r), 0);
+  const lunchMinutesForDate = (date: string) => lunchMinutesFromRecords(timesheetLunchRecords.filter(r => r.date === date));
+  const hoursForDate = (date: string) => netHours(grossHoursForDate(date), lunchMinutesForDate(date));
   const recordsForDate = (date: string) => timesheetRecords.filter(r => r.date === date).sort((a, b) => a.entryTime.localeCompare(b.entryTime));
   const q1Hours = timesheetDates.filter(d => Number(d.slice(8, 10)) <= 15).reduce((sum, d) => sum + hoursForDate(d), 0);
   const q2Hours = timesheetDates.filter(d => Number(d.slice(8, 10)) > 15).reduce((sum, d) => sum + hoursForDate(d), 0);
@@ -2496,10 +2500,10 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
             <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
               <div style={{ minWidth: 720 }}>
                 <div className="row gap-2" style={{ marginBottom: 10, flexWrap: "wrap" }}>
-                  <span className="chip">TOTAL MES {fmtHours(monthHours)}</span>
+                  <span className="chip">NETO MES {fmtHours(monthHours)}</span>
                   <span className="chip lunch">ALMUERZO {monthLunchMinutes} min</span>
-                  <span className="chip" style={{ background: "#d9ead3", borderColor: "#93c47d", color: "#274e13" }}>CORTE 1 {fmtHours(q1Hours)} · {q1LunchMinutes} min almuerzo · {money(q1Hours * hourlyRate)}</span>
-                  <span className="chip" style={{ background: "#ead1dc", borderColor: "#c27ba0", color: "#741b47" }}>CORTE 2 {fmtHours(q2Hours)} · {q2LunchMinutes} min almuerzo · {money(q2Hours * hourlyRate)}</span>
+                  <span className="chip" style={{ background: "#d9ead3", borderColor: "#93c47d", color: "#274e13" }}>CORTE 1 NETO {fmtHours(q1Hours)} · {q1LunchMinutes} min almuerzo · {money(q1Hours * hourlyRate)}</span>
+                  <span className="chip" style={{ background: "#ead1dc", borderColor: "#c27ba0", color: "#741b47" }}>CORTE 2 NETO {fmtHours(q2Hours)} · {q2LunchMinutes} min almuerzo · {money(q2Hours * hourlyRate)}</span>
                 </div>
                 <div className="row gap-2" style={{ marginBottom: 12, flexWrap: "wrap" }}>
                   {(["q1", "q2"] as PayrollPeriod[]).map(period => {
@@ -2531,7 +2535,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                     <div key={week[0]} style={{ marginBottom: 12, border: "1.4px solid #111", background: "#fff" }}>
                       <div className="sk-mono" style={{ background: weekBg, color: "#111", fontWeight: 900, padding: "5px 8px", borderBottom: "1.4px solid #111" }}>SEMANA {wi + 1}</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1.1fr .9fr .8fr .8fr .85fr .7fr .7fr .65fr", borderBottom: "1.4px solid #111" }}>
-                        {["FECHA", "DIA", "INICIO", "CIERRE", "ALMUERZO MIN", "TIEMPO", "TOTAL", "EDITAR"].map(label => (
+                        {["FECHA", "DIA", "INICIO", "CIERRE", "ALMUERZO MIN", "TIEMPO NETO", "TOTAL", "EDITAR"].map(label => (
                           <div key={label} className="sk-mono text-xs" style={{ background: headerBg, color: "#111", fontWeight: 900, padding: "6px 8px", borderRight: "1.2px solid #111", textAlign: "center" }}>{label}</div>
                         ))}
                       </div>
@@ -2718,12 +2722,13 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
             <div className="row gap-3">
               {team.map((p, i) => {
                 const records = weeklyRecords.filter(r => r.employeeId === p.id);
-                const hours = records.reduce((sum, r) => sum + (Number(r.hoursWorked) || 0), 0);
+                const lunchMinutes = lunchMinutesFromRecords(lunchRecords.filter(r => r.employeeId === p.id && r.date >= weekStart && r.date <= today));
+                const hours = netHours(records.reduce((sum, r) => sum + (r.status === "abierto" ? hoursBetween(r.entryTime, new Date().toISOString()) : (Number(r.hoursWorked) || 0)), 0), lunchMinutes);
                 const autoClosed = records.filter(r => r.status === "cerrado_automatico").length;
                 return (
                 <div key={p.id} className="stack" style={{ flex: 1 }}>
                   <div className="sk-mono text-xs muted">{p.name}</div>
-                  <div className="list-row"><span>Tiempo</span><span className="sk-mono">{fmtHours(hours)}</span></div>
+                  <div className="list-row"><span>Tiempo neto</span><span className="sk-mono">{fmtHours(hours)}</span></div>
                   <div className="list-row"><span>Registros</span><span className="sk-mono">{records.length}</span></div>
                   <div className="list-row"><span>Cierres auto</span><span className="sk-mono" style={{ color: autoClosed ? "#c0392b" : "var(--ink-3)" }}>{autoClosed}</span></div>
                   <MiniBars n={5} w={160} h={26} seed={i * 3 + 1} />
@@ -2747,7 +2752,8 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
           </div>
           <div className="sk-box p-3 fill">
             <div className="sk-mono text-xs tracked muted">RESUMEN HOY</div>
-            <div className="list-row" style={{ marginTop: 4 }}><span>Total presencia</span><span className="sk-mono">{fmtHours(todayPresenceHours)}</span></div>
+            <div className="list-row" style={{ marginTop: 4 }}><span>Tiempo neto</span><span className="sk-mono">{fmtHours(todayPresenceHours)}</span></div>
+            <div className="list-row"><span>Almuerzo</span><span className="sk-mono">{todayLunchMinutes} min</span></div>
             <div className="list-row"><span>Registros</span><span className="sk-mono">{todayRecords.length}</span></div>
             <div className="list-row"><span>Cierres auto</span><span className="sk-mono" style={{ color: todayAutoClosed ? "#c0392b" : "var(--ink-3)" }}>{todayAutoClosed}</span></div>
           </div>
@@ -7704,8 +7710,9 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
   const payrollMonth = todayStr.slice(0, 7);
   const myMonthAttendance = attendanceRecords.filter(r => r.employeeId === session.id && r.date.startsWith(payrollMonth));
   const myMonthLunchRecords = lunchRecords.filter(r => r.employeeId === session.id && r.date.startsWith(payrollMonth));
-  const myMonthHours = myMonthAttendance.reduce((sum, r) => sum + (r.status === "abierto" ? hoursBetween(r.entryTime, new Date().toISOString()) : (Number(r.hoursWorked) || 0)), 0);
   const myMonthLunchMinutes = myMonthLunchRecords.reduce((sum, r) => sum + (Number(r.minutes) || (r.status === "abierto" ? minutesBetween(r.startTime, new Date().toISOString()) : 0)), 0);
+  const myMonthGrossHours = myMonthAttendance.reduce((sum, r) => sum + (r.status === "abierto" ? hoursBetween(r.entryTime, new Date().toISOString()) : (Number(r.hoursWorked) || 0)), 0);
+  const myMonthHours = Math.max(0, Math.round((myMonthGrossHours - (myMonthLunchMinutes / 60)) * 100) / 100);
   const myPayrollConfirmations = payrollConfirmations
     .filter(c => c.employeeId === session.id)
     .sort((a, b) => `${b.month}-${b.period}`.localeCompare(`${a.month}-${a.period}`));
@@ -7846,7 +7853,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
             <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>{MONTH_NAMES_ES[Number(payrollMonth.slice(5, 7)) - 1]} {payrollMonth.slice(0, 4)}</span>
           </div>
           <div className="row gap-2" style={{ flexWrap: "wrap", marginBottom: 10 }}>
-            <span className="chip">Mes {fmtHours(myMonthHours)}</span>
+            <span className="chip">Mes neto {fmtHours(myMonthHours)}</span>
             <span className="chip lunch">Almuerzo {myMonthLunchMinutes} min</span>
             <span className="chip">{myMonthAttendance.length} registro(s)</span>
           </div>

@@ -261,12 +261,12 @@ Cada colaborador puede registrar **inicio** y **cierre** de su día operativo. E
 - Estado actual (día iniciado / día sin iniciar)
 - Tiempo transcurrido del día operativo (timer en tiempo real, sin NaN)
 - Historial real del día
-- Resumen mensual por colaborador con totales por corte
+- Resumen mensual por colaborador con totales netos por corte
 - Editor Admin por día para corregir inicio, cierre, tiempo calculado y almuerzo
 - Confirmación Admin de cortes de pago
 
 El estado de inicio día se guarda en Firestore y se sincroniza entre dispositivos.
-El tiempo se recalcula desde inicio/cierre. Si Admin cambia un registro o almuerzo que ya estaba dentro de un corte confirmado, esa confirmación queda en estado `requiere_revision` hasta reconfirmarla.
+El tiempo neto se recalcula desde inicio/cierre menos el almuerzo registrado. Ejemplo: 9:00 a 18:00 con 90 minutos de almuerzo queda en 7h 30m netos. Si Admin cambia un registro o almuerzo que ya estaba dentro de un corte confirmado, esa confirmación queda en estado `requiere_revision` hasta reconfirmarla.
 
 ---
 
@@ -325,7 +325,7 @@ Vista personalizada que ven los colaboradores al iniciar sesión con su PIN. Tie
 ### Pestaña Inicio
 
 - **Tarjeta de inicio día** — botón de inicio/cierre, estado visual, botón de almuerzo y contador de almuerzo activo
-- **Mi resumen de pagos** — tiempo del mes, almuerzo acumulado y cortes confirmados por Admin
+- **Mi resumen de pagos** — tiempo neto del mes, almuerzo acumulado y cortes confirmados por Admin
 - **Mis tareas hoy** — tareas del día asignadas a este colaborador, con checkbox
 - **Servicios hoy** — bicis asignadas con fecha de hoy
 - **Próximos agendamientos** — citas futuras asignadas
