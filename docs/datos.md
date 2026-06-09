@@ -45,8 +45,134 @@ interface DiagnosticUpdate {
   problemas: string;       // Problemas detectados
   recomendaciones: string; // Qué se recomienda hacer
   partes: string[];        // Lista de repuestos recomendados
+  labor?: string;          // Mano de obra sugerida
 }
 ```
+
+### `ServiceBilling` — Trabajo final y datos para factura
+
+```typescript
+interface ServiceLineItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  type: "repuesto" | "mano_obra" | "servicio";
+}
+
+interface ServiceBilling {
+  parts: ServiceLineItem[];    // Repuestos realmente usados
+  labor: ServiceLineItem[];    // Mano de obra / servicios cobrados
+  subtotal: number;
+  advance: number;             // Abono
+  total: number;
+  balance: number;             // Saldo
+  paymentStatus: "pendiente" | "pagado" | "adelanto";
+  closedAt?: string;
+  cashierId?: string;
+  notes?: string;
+}
+```
+
+Campos completos de `BikeService` agregados al modelo base:
+
+```typescript
+// Datos adicionales del cliente
+clientPhone?: string;
+clientDocument?: string;
+
+// Ingreso digital (formato físico de taller)
+intakeCondition?: string;       // Estado visible inicial de la bicicleta
+intakeAccessories?: string[];   // Accesorios recibidos
+intakeReportedIssue?: string;   // Falla reportada por el cliente
+intakeSignatureName?: string;   // Nombre de quien entrega/autoriza
+workshopStartDate?: string;     // FECHA ELABORACIÓN del formato físico (YYYY-MM-DD)
+pauseNotes?: string;            // "Quedó pendiente" — notas de pausa de trabajo
+
+// Estado interno del taller (8 fases del formato físico)
+workshopStatus?: "ingresada" | "diagnostico" | "autorizada" | "desarme" |
+                 "limpieza" | "inspeccion" | "ensamble" | "detalle" |
+                 "prueba" | "terminada" | "entregada";
+
+// Repuestos a cambiar (estimado / pre-inspección)
+quotedParts?: QuotedPart[];
+
+// Trabajo final
+finalBilling?: ServiceBilling;
+scheduledDate?: string;         // Fecha programada para el trabajo (puede diferir de date)
+```
+
+### `QuotedPart` — Repuesto cotizado (pre-inspección)
+
+```typescript
+interface QuotedPart {
+  id: string;
+  sku?: string;                // Código SKU de Loyverse
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  loyverseItemId?: string;     // ID del item en Loyverse (si fue verificado con API)
+  loyverseVariantId?: string;
+}
+```
+
+### `ServiceLineItem` — Ítem de factura
+
+```typescript
+interface ServiceLineItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  type: "repuesto" | "mano_obra" | "servicio";
+  sku?: string;
+  loyverseItemId?: string;     // ID del item en Loyverse
+  loyverseVariantId?: string;
+}
+```
+
+### `ServiceBilling` — Trabajo final y datos para factura
+
+```typescript
+interface ServiceBilling {
+  parts: ServiceLineItem[];    // Repuestos realmente usados
+  labor: ServiceLineItem[];    // Mano de obra / servicios cobrados
+  subtotal: number;
+  advance: number;             // Abono
+  total: number;
+  balance: number;             // Saldo a pagar
+  paymentStatus: "pendiente" | "pagado" | "adelanto";
+  closedAt?: string;
+  cashierId?: string;
+  notes?: string;
+  loyverseReceiptId?: string;  // ID del recibo creado en Loyverse
+  loyverseSyncedAt?: string;   // ISO timestamp de último envío a Loyverse
+}
+```
+
+**Reglas operativas importantes:**
+- `diagnosticUpdates[].partes` → repuestos recomendados o posibles. NO son venta final.
+- `quotedParts` → estimado/cotización de repuestos a cambiar. Visible al cliente en el link de seguimiento.
+- `finalBilling.parts` → repuestos realmente usados para factura/cobro. Obligatorios para cerrar servicio.
+- Si el `serviceType` contiene "Mant" (mantenimiento), al agregar repuestos usados se aplica automáticamente **20% de descuento** en el precio del repuesto. Este descuento NO aplica a mano de obra o servicios.
+
+### Fases internas del taller (`WORKSHOP_PHASES`)
+
+```typescript
+const WORKSHOP_PHASES = [
+  { key: "diagnostico",  label: "Diagnóstico",    color: "#e8a020" },
+  { key: "autorizada",   label: "Autorizada ✅",  color: "#4caf50" },  // cliente aprobó diagnóstico
+  { key: "desarme",      label: "Desarme",         color: "#e8a020" },
+  { key: "limpieza",     label: "Limpieza",        color: "#5cc8e8" },
+  { key: "inspeccion",   label: "Inspección",      color: "#5cc8e8" },
+  { key: "ensamble",     label: "Ensamble",        color: "#9c4a9e" },
+  { key: "detalle",      label: "Detalle",         color: "#9c4a9e" },
+  { key: "prueba",       label: "Prueba",          color: "#6c1f6e" },
+  { key: "terminada",    label: "Listo entregar",  color: "#4caf50" },
+];
+```
+
+La fase "autorizada" aparece con un botón prominente de confirmación cuando `workshopStatus === "diagnostico"` y existe al menos un diagnóstico guardado.
 
 ### `AppTask` — Tarea asignada
 
@@ -116,7 +242,7 @@ Documento: data
   ],
   "extendedData": {
     "[memberId]": {
-      "salario": "string",
+      "salario": "string // referencia interna de pago",
       "direccion": "string",
       "documento": "string",
       "eps": "string",
@@ -132,6 +258,9 @@ Documento: data
   },
   "services": [ /* array de BikeService */ ],
   "tasks": [ /* array de AppTask */ ],
+  "attendanceRecords": [ /* array de AttendanceRecord */ ],
+  "lunchRecords": [ /* array de LunchRecord */ ],
+  "payrollConfirmations": [ /* array de PayrollConfirmation */ ],
   "appointments": [ /* array de Appointment */ ],
   "shift": {
     "[memberId]": false
@@ -154,8 +283,11 @@ Documento: data
 | `cwb_team` | Miembros del equipo | Cuando cambia el equipo |
 | `cwb_ext` | `extendedData` completo | Cuando cambia algún perfil |
 | `cwb_emp_cache` | `[{id, name, role, pin}]` | Al guardar extendedData o cargar Firestore |
-| `cwb_shift` | Estado de turnos | Cuando cambia el turno |
+| `cwb_shift` | Estado de inicio día | Cuando cambia el registro de inicio/cierre |
 | `cwb_emp_lunch` | Estado de almuerzo por colaborador | Cuando cambia el almuerzo |
+| `cwb_attendance_records` | Entradas/salidas del equipo | Al fichar, corregir o crear registros manuales |
+| `cwb_lunch_records` | Registros de almuerzo | Al iniciar, cerrar o corregir almuerzos |
+| `cwb_payroll_confirmations` | Confirmaciones de cortes de pago | Cuando Admin confirma o reabre un corte por ajustes |
 | `cwb_admin_pwd` | Contraseña del admin (hash) | Al cambiar la contraseña |
 | `cwb_session` | (sessionStorage) Sesión actual | Al hacer login/logout |
 

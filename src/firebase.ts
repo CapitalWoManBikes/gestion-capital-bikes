@@ -23,10 +23,17 @@ export interface ShopData {
   extendedData: Record<string, any>;
   services: any[];
   tasks: any[];
+  attendanceRecords?: any[];
+  lunchRecords?: any[];
+  payrollConfirmations?: any[];
   appointments: any[];
   memberships: any[];
   shift: Record<string, boolean>;
   empLunch: Record<string, boolean>;
+  loyverseToken?: string;
+  deletedServiceIds?: string[];
+  clients?: any[];
+  _lastClientId?: string;
 }
 
 /** Saves the full shop state to Firestore (merge so partial updates are safe). */
@@ -40,9 +47,9 @@ export async function loadShopDataOnce(): Promise<ShopData | null> {
   return snap.exists() ? (snap.data() as ShopData) : null;
 }
 
-/** Subscribes to real-time changes. Returns an unsubscribe function. */
-export function subscribeShopData(cb: (data: ShopData) => void): () => void {
+/** Subscribes to real-time changes. Passes null when the document doesn't exist yet. Returns an unsubscribe function. */
+export function subscribeShopData(cb: (data: ShopData | null) => void): () => void {
   return onSnapshot(SHOP_DOC, (snap) => {
-    if (snap.exists()) cb(snap.data() as ShopData);
+    cb(snap.exists() ? (snap.data() as ShopData) : null);
   });
 }

@@ -11,7 +11,7 @@ Esta guía explica el funcionamiento de cada módulo del sistema desde el punto 
 3. [Módulo de Servicios](#3-módulo-de-servicios)
 4. [Calendario](#4-calendario)
 5. [Tareas](#5-tareas)
-6. [Turnos y Fichajes](#6-turnos-y-fichajes)
+6. [Inicio Día y Registros](#6-inicio-día-y-registros)
 7. [Almuerzo](#7-almuerzo)
 8. [Perfil del equipo](#8-perfil-del-equipo)
 9. [Dashboard de colaborador](#9-dashboard-de-colaborador)
@@ -47,7 +47,7 @@ Al abrir la app, el sistema espera a que Firestore cargue los datos antes de hab
 
 Vista general del estado del equipo en tiempo real, con cuatro subvistas:
 
-- **Lista** — tarjetas por colaborador con estado de turno y almuerzo
+- **Lista** — tarjetas por colaborador con estado de inicio día y almuerzo
 - **Mapa** — distribución visual del equipo en el taller
 - **Kanban** — tablero de flujo (experimental)
 - **Timeline** — línea de tiempo de actividad del día
@@ -56,8 +56,8 @@ Vista general del estado del equipo en tiempo real, con cuatro subvistas:
 
 En la parte superior del panel de administración aparecen banners contextuales:
 
-- **Banner morado** ("en turno") — cuando uno o más colaboradores están en turno activo
-- **Banner naranja** ("en almuerzo") — cuando alguien en turno ha iniciado almuerzo
+- **Banner morado** ("día iniciado") — cuando uno o más colaboradores iniciaron su día operativo
+- **Banner naranja** ("en almuerzo") — cuando alguien con día iniciado ha iniciado almuerzo
 
 Los nombres son dinámicos: se leen del estado real del equipo, no están hardcodeados.
 
@@ -89,10 +89,23 @@ Al crear un servicio se captura:
 
 Al crear el servicio se envía automáticamente un email al cliente con el mensaje de recepción y el link de seguimiento.
 
-### Fases del servicio
+### Ingreso digital de bicicleta
+
+El ingreso ya no queda solo en papel. El modal de nuevo servicio captura datos base del formato de ingreso:
+
+- Datos del cliente: nombre, email, teléfono y documento.
+- Datos de la bici: descripción, servicio solicitado y técnico asignado.
+- Motivo de ingreso o falla reportada por el cliente.
+- Estado inicial visible de la bicicleta.
+- Accesorios recibidos.
+- Nombre de quien entrega/autoriza.
+
+Estos campos quedan guardados dentro del servicio para que taller, caja y administración puedan consultarlos durante todo el ciclo.
+
+### Fases del servicio (visibles al cliente)
 
 ```
-0 - Recibida      → 1 - Desarme → 2 - Lavado → 3 - Ensamble → 4 - Lista para recoger
+0 - Recibida → 1 - Desarme → 2 - Lavado → 3 - Ensamble → 4 - Lista para recoger
 ```
 
 Cada avance de fase dispara un email automático al cliente. Al llegar a la fase 4 ("Lista para recoger"), el email incluye la política de recogida:
@@ -112,6 +125,33 @@ Si se registró una fecha en "¿Cuándo necesita la bici el cliente?", el sistem
 
 Esta alerta aparece en la tarjeta de servicio y en el calendario.
 
+### Fases internas del taller (8 pasos del formato físico)
+
+El técnico maneja un segundo selector de fases más detallado, independiente de las fases visibles al cliente:
+
+| Fase | Descripción | Color |
+|------|-------------|-------|
+| Diagnóstico | Revisión inicial de la bicicleta | Naranja |
+| Autorizada ✅ | Cliente aprobó el diagnóstico — trabajo puede comenzar | Verde |
+| Desarme | Desmontaje de componentes | Naranja |
+| Limpieza | Lavado y desengrase | Azul claro |
+| Inspección | Revisión detallada de partes | Azul claro |
+| Ensamble | Montaje y ajuste de componentes | Morado |
+| Detalle | Acabado final | Morado |
+| Prueba | Prueba de funcionamiento | Morado oscuro |
+| Listo entregar | Trabajo terminado, listo para entregar | Verde |
+
+**Botón "Autorizar trabajo":** aparece automáticamente cuando la fase es "Diagnóstico" y existe al menos un diagnóstico guardado. Al confirmarlo, mueve el estado a "Autorizada" indicando que el cliente aprobó el presupuesto o diagnóstico.
+
+### Edición del ingreso
+
+Después de crear el servicio, el bloque **INGRESO DIGITAL** muestra el botón **✎ Editar** que abre un formulario inline con todos los campos:
+- Nombre, email, teléfono, documento del cliente
+- Técnico asignado (todo el equipo disponible)
+- Fecha de entrega acordada y fecha de elaboración
+- Motivo de ingreso, estado inicial, accesorios
+- Entregó/Autoriza, notas generales
+
 ### Diagnóstico técnico
 
 Desde cada tarjeta activa se puede agregar una actualización de diagnóstico con:
@@ -121,8 +161,52 @@ Desde cada tarjeta activa se puede agregar una actualización de diagnóstico co
 - **Problemas detectados** — fallas identificadas
 - **Recomendaciones** — acciones sugeridas
 - **Repuestos recomendados** — lista de repuestos (uno por línea)
+- **Mano de obra sugerida** — trabajo posible después de la revisión
 
 El historial de diagnósticos es visible para el colaborador en la tarjeta y para el cliente en su link de seguimiento.
+
+Importante: los repuestos recomendados son partes posibles después de la revisión. No son todavía repuestos vendidos ni usados.
+
+### Repuestos a cambiar (REPUESTOS A CAMBIAR)
+
+Sección visible en cada tarjeta de servicio activo, antes y durante el trabajo:
+
+- Permite agregar repuestos estimados con SKU (código de tienda), descripción, cantidad y precio
+- El botón 🔍 busca el código en Loyverse y auto-completa nombre y precio
+- Los repuestos cotizados aparecen en el **link de seguimiento del cliente** para que vea el estimado
+- Son independientes de los repuestos usados finales — no afectan la factura hasta que se confirmen
+
+### Permisos por rol
+
+El sistema adapta la vista según el rol del colaborador:
+
+| Rol | Puede ver/hacer | No puede ver |
+|-----|-----------------|--------------|
+| **Admin** | Todo | — |
+| **Mecánico / Técnico / Taller** | Diagnósticos, fases, repuestos a cambiar | Sección de factura y cobros |
+| **Caja** | Factura, cobros, pagos | Formulario de diagnóstico |
+
+El rol se detecta automáticamente por la palabra clave en el campo "Rol" del perfil (mecánico, técnico, taller, caja).
+
+### Trabajo final y factura interna
+
+Antes de marcar una bici como terminada/lista para recoger, la app exige registrar el trabajo final:
+
+- Repuestos realmente usados.
+- Cantidad.
+- Valor unitario.
+- Mano de obra o servicios cobrados.
+- Abono.
+- Estado de pago.
+- Observaciones finales.
+
+La app calcula subtotal, total y saldo. Si faltan estos datos, el avance hacia "Lista para recoger" queda bloqueado. Esta información queda en `finalBilling` y sirve como base para generar factura o recibo después.
+
+**Descuento 20% en mantenimientos:** si el servicio es de tipo "Mant..." (cualquier mantenimiento del catálogo), al agregar repuestos usados la app aplica automáticamente un 20% de descuento en el precio. El precio con descuento se muestra en verde antes de confirmar. El descuento NO aplica a mano de obra ni servicios.
+
+**Botón "🖨 Imprimir recibo":** aparece cuando hay factura registrada. Abre una vista imprimible con los datos del cliente, la bicicleta, los ítems cobrados, totales y saldo. Al hacer clic en "Imprimir" se abre el diálogo del sistema.
+
+**Integración Loyverse POS:** botón "🔗 Enviar a Loyverse" crea un recibo abierto (sin pago) en el POS. Solo se envían ítems que tienen código Loyverse. Si falla, los datos locales quedan intactos. El ID del recibo queda guardado en el servicio para trazabilidad.
 
 ### Estado de pago y entrega
 
@@ -168,17 +252,21 @@ Las tareas completadas se marcan con checkbox y quedan en la lista para referenc
 
 ---
 
-## 6. Turnos y Fichajes
+## 6. Inicio Día y Registros
 
 **Componente:** `ShiftSection`
 
-Cada colaborador puede fichar su **entrada** y **salida** del turno. El sistema muestra:
+Cada colaborador puede registrar **inicio** y **cierre** de su día operativo. El sistema muestra:
 
-- Estado actual (en turno / fuera de turno)
-- Tiempo transcurrido en turno (timer en tiempo real, sin NaN)
-- Historial simulado del día
+- Estado actual (día iniciado / día sin iniciar)
+- Tiempo transcurrido del día operativo (timer en tiempo real, sin NaN)
+- Historial real del día
+- Resumen mensual por colaborador con totales por corte
+- Editor Admin por día para corregir inicio, cierre, tiempo calculado y almuerzo
+- Confirmación Admin de cortes de pago
 
-El estado de turno se guarda en Firestore y se sincroniza entre dispositivos.
+El estado de inicio día se guarda en Firestore y se sincroniza entre dispositivos.
+El tiempo se recalcula desde inicio/cierre. Si Admin cambia un registro o almuerzo que ya estaba dentro de un corte confirmado, esa confirmación queda en estado `requiere_revision` hasta reconfirmarla.
 
 ---
 
@@ -186,7 +274,7 @@ El estado de turno se guarda en Firestore y se sincroniza entre dispositivos.
 
 **Componente:** `LunchSection`
 
-Control del estado de pausa de almuerzo. Solo disponible para colaboradores que están **en turno activo**.
+Control del estado de pausa de almuerzo. Solo disponible para colaboradores que tienen **día iniciado**.
 
 Al iniciar almuerzo:
 - El estado del colaborador cambia visualmente (tarjeta naranja)
@@ -205,11 +293,11 @@ Gestión de información de cada colaborador:
 |-------|------------|
 | Nombre | Nombre completo |
 | Rol | Mecánico, Tienda/Caja, Administración, etc. |
-| Salario | Referencia interna |
+| Referencia de pago | Referencia interna |
 | Dirección | Domicilio |
 | Documento | Cédula |
 | EPS | Entidad de salud |
-| Horas semanales | Default: 40h |
+| Tiempo referencia semanal | Default: 40h |
 | PIN de acceso | 4 dígitos para login como colaborador |
 | Permisos | Ver sección de permisos |
 
@@ -236,7 +324,8 @@ Vista personalizada que ven los colaboradores al iniciar sesión con su PIN. Tie
 
 ### Pestaña Inicio
 
-- **Tarjeta de turno** — botón de entrada/salida, estado visual, botón de almuerzo
+- **Tarjeta de inicio día** — botón de inicio/cierre, estado visual, botón de almuerzo y contador de almuerzo activo
+- **Mi resumen de pagos** — tiempo del mes, almuerzo acumulado y cortes confirmados por Admin
 - **Mis tareas hoy** — tareas del día asignadas a este colaborador, con checkbox
 - **Servicios hoy** — bicis asignadas con fecha de hoy
 - **Próximos agendamientos** — citas futuras asignadas

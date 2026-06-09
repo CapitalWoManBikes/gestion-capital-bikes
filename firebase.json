@@ -1,4 +1,10 @@
 {
+  "functions": {
+    "source": "functions"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "public": "dist",
     "ignore": [
@@ -6,7 +12,64 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "headers": [
+      {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
+    ],
     "rewrites": [
+      {
+        "source": "/api/organizar-mensajes",
+        "function": {
+          "functionId": "organizarMensajes",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/loyverse/items",
+        "function": {
+          "functionId": "loyverseItems",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/loyverse/receipts",
+        "function": {
+          "functionId": "loyverseReceipts",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/loyverse/customers",
+        "function": {
+          "functionId": "loyverseCustomers",
+          "region": "us-central1"
+        }
+      },
       {
         "source": "**",
         "destination": "/index.html"
