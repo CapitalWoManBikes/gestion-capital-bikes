@@ -14,7 +14,8 @@ function setCors(req, res) {
     "https://capital-bikes.web.app",
     "https://capital-bikes.firebaseapp.com",
   ];
-  if (allowedOrigins.includes(origin)) {
+  const allowedLocalDev = /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin);
+  if (allowedOrigins.includes(origin) || allowedLocalDev) {
     res.set("Access-Control-Allow-Origin", origin);
   }
   res.set("Vary", "Origin");

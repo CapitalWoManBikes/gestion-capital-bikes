@@ -894,7 +894,10 @@ async function serviceCatalogLineWithLoyverse(serviceType: string | undefined, d
   const localLine = serviceCatalogLine(serviceType, discountPercent);
   if (!localLine || !token) return localLine;
   const code = localLine.id.replace(/^service-/, "");
-  const result = await lookupLoyverseSKU(code, token);
+  const result = await lookupLoyverseSKU(code, token).catch(error => {
+    console.warn("[Loyverse] No se pudo vincular el servicio del catalogo:", loyverseErrorMessage(error));
+    return null;
+  });
   if (!result) return localLine;
   const discount = clampDiscount(discountPercent);
   const basePrice = Number(result.price) || localLine.unitPrice || 0;
@@ -946,51 +949,143 @@ const isWorkshopResponsible = (member: any) => {
 const workshopResponsibles = (team: any[]) => team.filter(isWorkshopResponsible);
 
 // ─── Loyverse API helpers ────────────────────────────────────────────────────
-async function lookupLoyverseSKU(sku: string, token: string): Promise<{ name: string; price: number; itemId: string; variantId?: string } | null> {
-  const headers = { Authorization: `Bearer ${token}` };
+type LoyverseLookupResult = { name: string; price: number; itemId: string; variantId?: string };
+
+class LoyverseApiError extends Error {
+  status?: number;
+  detail?: unknown;
+  constructor(message: string, status?: number, detail?: unknown) {
+    super(message);
+    this.name = "LoyverseApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+function normalizeLoyverseToken(token: string): string {
+  return String(token || "").trim().replace(/^Bearer\s+/i, "").trim();
+}
+
+function loyverseErrorMessage(error: any): string {
+  if (error instanceof LoyverseApiError) return error.message;
+  return error?.message || "No se pudo conectar con Loyverse.";
+}
+
+function formatLoyverseError(data: any, status: number, fallbackText = ""): string {
+  const parts: string[] = [];
+  if (typeof data?.message === "string") parts.push(data.message);
+  if (typeof data?.error === "string") parts.push(data.error);
+  if (typeof data?.detail === "string") parts.push(data.detail);
+  if (Array.isArray(data?.errors)) {
+    parts.push(
+      data.errors
+        .map((e: any) => e?.detail || e?.message || e?.code || JSON.stringify(e))
+        .filter(Boolean)
+        .join("; ")
+    );
+  }
+  const cleanFallback = String(fallbackText || "").trim();
+  if (!parts.length && cleanFallback && !cleanFallback.startsWith("<")) parts.push(cleanFallback.slice(0, 240));
+  const prefix = status === 401 || status === 403 ? "Token de Loyverse rechazado" : `Loyverse HTTP ${status}`;
+  return parts.filter(Boolean).length ? `${prefix}: ${parts.filter(Boolean).join(" - ")}` : `${prefix}: respuesta no valida.`;
+}
+
+async function fetchLoyverseJson(path: string, token: string, init: RequestInit = {}): Promise<any> {
+  const cleanToken = normalizeLoyverseToken(token);
+  if (!cleanToken) throw new LoyverseApiError("Token de Loyverse no configurado.");
+
+  const headers = new Headers(init.headers || {});
+  headers.set("Authorization", `Bearer ${cleanToken}`);
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+  const res = await fetch(path, { ...init, headers });
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text();
+  const trimmed = text.trim();
+  let data: any = null;
+
+  if (trimmed) {
+    const looksJson = contentType.includes("application/json") || /^[\[{]/.test(trimmed);
+    if (!looksJson) {
+      throw new LoyverseApiError(
+        "El proxy /api/loyverse no devolvio JSON. En desarrollo local revisa el proxy de Vite o usa Firebase Hosting.",
+        res.status,
+        trimmed.slice(0, 300)
+      );
+    }
+    try {
+      data = JSON.parse(trimmed);
+    } catch {
+      throw new LoyverseApiError(`Respuesta JSON invalida de Loyverse (HTTP ${res.status}).`, res.status, trimmed.slice(0, 300));
+    }
+  }
+
+  if (!res.ok) throw new LoyverseApiError(formatLoyverseError(data, res.status, text), res.status, data || text);
+  return data ?? {};
+}
+
+async function testLoyverseConnection(token: string): Promise<{ success: true; count: number } | { success: false; error: string }> {
+  try {
+    const data = await fetchLoyverseJson("/api/loyverse/items?limit=1", token);
+    return { success: true, count: Array.isArray(data.items) ? data.items.length : 0 };
+  } catch (error: any) {
+    return { success: false, error: loyverseErrorMessage(error) };
+  }
+}
+
+async function lookupLoyverseSKU(sku: string, token: string): Promise<LoyverseLookupResult | null> {
   const normalized = sku.trim().toLowerCase();
 
   const findInItems = (items: any[]) => {
     for (const item of items) {
       // REF a nivel de item (reference_id, reference, handle)
-      const itemRef = (item.reference_id || item.reference || item.handle || "").trim().toLowerCase();
+      const itemRef = (item.reference_id || item.reference || item.handle || item.sku || "").trim().toLowerCase();
       if (itemRef && itemRef === normalized) {
         const variant = (item.variants || [])[0];
-        return { name: item.item_name, price: variant?.default_price ?? 0, itemId: item.id, variantId: variant?.id };
+        return {
+          name: item.item_name || item.name || "",
+          price: Number(variant?.default_price ?? variant?.price ?? 0) || 0,
+          itemId: item.id,
+          variantId: variant?.variant_id || variant?.id,
+        };
       }
       // REF / SKU / barcode a nivel de variante
       const variant = (item.variants || []).find((v: any) =>
         v.reference_id?.trim().toLowerCase() === normalized ||
         v.sku?.trim().toLowerCase() === normalized ||
-        v.barcode?.trim().toLowerCase() === normalized
+        v.barcode?.trim().toLowerCase() === normalized ||
+        v.variant_id?.trim().toLowerCase() === normalized ||
+        v.id?.trim().toLowerCase() === normalized
       );
-      if (variant) return { name: item.item_name, price: variant.default_price ?? 0, itemId: item.id, variantId: variant.id };
+      if (variant) {
+        return {
+          name: item.item_name || item.name || variant.name || "",
+          price: Number(variant.default_price ?? variant.price ?? 0) || 0,
+          itemId: item.id,
+          variantId: variant.variant_id || variant.id,
+        };
+      }
     }
     return null;
   };
 
-  try {
-    let cursor: string | undefined;
-    let firstItemLogged = false;
-    do {
-      const url = `/api/loyverse/items?page_size=250${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-      const res = await fetch(url, { headers });
-      if (!res.ok) { console.error("[Loyverse] HTTP", res.status, await res.text()); return null; }
-      const data = await res.json();
+  let cursor: string | undefined;
+  let firstItemLogged = false;
+  do {
+      const url = `/api/loyverse/items?limit=250${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      const data = await fetchLoyverseJson(url, token);
       const items: any[] = data.items || [];
       // Log del primer item para diagnóstico de campos
       if (!firstItemLogged && items.length > 0) {
         firstItemLogged = true;
         const sample = items[0];
-        console.log("[Loyverse] Buscando REF:", sku, "| Campos del primer item:", Object.keys(sample));
-        console.log("[Loyverse] Primer item completo:", JSON.stringify(sample, null, 2));
+      console.log("[Loyverse] Buscando REF:", sku, "| Campos del primer item:", Object.keys(sample));
       }
       const match = findInItems(items);
       if (match) return match;
-      cursor = data.cursor || undefined;
-    } while (cursor);
-    return null;
-  } catch (e) { console.error("[Loyverse] Error:", e); return null; }
+      cursor = data.cursor || data.next_cursor || data.nextCursor || undefined;
+  } while (cursor);
+  return null;
 }
 
 function normalizeDocument(value: string): string {
@@ -998,7 +1093,6 @@ function normalizeDocument(value: string): string {
 }
 
 async function lookupLoyverseCustomerByDocument(document: string, token: string): Promise<{ id: string; name: string; email?: string; phone?: string; document?: string; note?: string } | null> {
-  const headers = { Authorization: `Bearer ${token}` };
   const normalized = normalizeDocument(document);
   if (!normalized) return null;
 
@@ -1021,31 +1115,26 @@ async function lookupLoyverseCustomerByDocument(document: string, token: string)
     note: customer.note || "",
   });
 
+  const directUrl = `/api/loyverse/customers?limit=250&customer_code=${encodeURIComponent(document.trim())}`;
   try {
-    const directUrl = `/api/loyverse/customers?limit=250&customer_code=${encodeURIComponent(document.trim())}`;
-    const directRes = await fetch(directUrl, { headers });
-    if (directRes.ok) {
-      const directData = await directRes.json();
-      const directMatch = (directData.customers || []).find(matchesCustomer);
-      if (directMatch) return mapCustomer(directMatch);
-    }
-
-    let cursor: string | undefined;
-    do {
-      const url = `/api/loyverse/customers?limit=250${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-      const res = await fetch(url, { headers });
-      if (!res.ok) { console.error("[Loyverse Customers] HTTP", res.status, await res.text()); return null; }
-      const data = await res.json();
-      const customers: any[] = data.customers || [];
-      const match = customers.find(matchesCustomer);
-      if (match) return mapCustomer(match);
-      cursor = data.cursor || undefined;
-    } while (cursor);
-    return null;
-  } catch (e) {
-    console.error("[Loyverse Customers] Error:", e);
-    return null;
+    const directData = await fetchLoyverseJson(directUrl, token);
+    const directMatch = (directData.customers || []).find(matchesCustomer);
+    if (directMatch) return mapCustomer(directMatch);
+  } catch (error: any) {
+    if (error?.status === 401 || error?.status === 403) throw error;
+    console.warn("[Loyverse Customers] Busqueda directa no disponible, se intenta listado general:", loyverseErrorMessage(error));
   }
+
+  let cursor: string | undefined;
+  do {
+    const url = `/api/loyverse/customers?limit=250${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const data = await fetchLoyverseJson(url, token);
+    const customers: any[] = data.customers || [];
+    const match = customers.find(matchesCustomer);
+    if (match) return mapCustomer(match);
+    cursor = data.cursor || data.next_cursor || data.nextCursor || undefined;
+  } while (cursor);
+  return null;
 }
 
 async function sendBillingToLoyverse(
@@ -1055,39 +1144,38 @@ async function sendBillingToLoyverse(
 ): Promise<{ success: true; receiptId: string; receiptNumber?: string } | { success: false; error: string }> {
   try {
     const allItems = [...billing.parts, ...billing.labor];
+    const missingVariant = allItems.filter(i => i.loyverseItemId && !i.loyverseVariantId);
+    if (missingVariant.length > 0) {
+      return { success: false, error: "Hay items antiguos vinculados a Loyverse sin variante. Vuelve a buscarlos por codigo antes de enviar." };
+    }
     const lineItems = allItems
-      .filter(i => i.loyverseItemId && i.description.trim() && i.quantity > 0)
+      .filter(i => i.loyverseVariantId && i.description.trim() && i.quantity > 0)
       .map(i => ({
-        item_id: i.loyverseItemId,
-        ...(i.loyverseVariantId ? { variant_id: i.loyverseVariantId } : {}),
-        quantity: i.quantity,
-        price: i.unitPrice,
-        total_money: i.quantity * i.unitPrice,
+        variant_id: i.loyverseVariantId,
+        quantity: Number(i.quantity) || 1,
+        price: Number(i.unitPrice) || 0,
+        line_note: [i.sku ? `SKU ${i.sku}` : "", i.description].filter(Boolean).join(" - ").slice(0, 255),
       }));
-    if (lineItems.length === 0) return { success: false, error: "No hay items con código Loyverse para enviar." };
+    if (lineItems.length === 0) return { success: false, error: "No hay items con codigo y variante Loyverse para enviar." };
     const serviceLine = serviceCatalogLine(service.serviceType);
     if (serviceLine && !lineItems.length) {
       return { success: false, error: "El mantenimiento quedó en la cuenta local, pero para enviarlo a Loyverse necesita estar asociado a un código/item de Loyverse." };
     }
-    const total = lineItems.reduce((s, i) => s + i.total_money, 0);
     const body = {
       receipt_date: new Date().toISOString(),
+      source: "Capital Wo-Man Bikes",
       note: `Taller · ${service.clientName} · ${service.bikeDescription}`,
       ...(service.loyverseCustomerId ? { customer_id: service.loyverseCustomerId } : {}),
       line_items: lineItems,
-      total_money: total,
       payments: [],
     };
-    const res = await fetch("/api/loyverse/receipts", {
+    const responseData = await fetchLoyverseJson("/api/loyverse/receipts", token, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const responseData = await res.json();
-    if (!res.ok) return { success: false, error: responseData?.message || `Error ${res.status}` };
     return { success: true, receiptId: responseData.id || responseData.receipt_number, receiptNumber: responseData.receipt_number };
   } catch (e: any) {
-    return { success: false, error: e?.message || "Error de conexión con Loyverse" };
+    return { success: false, error: loyverseErrorMessage(e) };
   }
 }
 
@@ -1101,26 +1189,37 @@ const LOGO_START_SRC = "/logos/inicio-w.svg";
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Kalam:wght@300;400;700&family=Caveat:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
   :root {
-    --ink: #1d1a16;
-    --ink-2: #3a362f;
-    --ink-3: #6b6559;
-    --paper: #fbfbf9;
-    --paper-2: #f0eee9;
-    --line: #2a261f;
-    --accent: #6c1f6e;
-    --accent-soft: #f3e3f0;
-    --accent-2: #5cc8e8;
-    --accent-2-soft: #e6f6fc;
-    --lunch: #5cc8e8;
-    --lunch-soft: #e6f6fc;
-    --done: #3a8a3a;
+    --ink: #1c1720;
+    --ink-2: #3a3140;
+    --ink-3: #74677a;
+    --paper: #fffbff;
+    --paper-2: #f7f0f8;
+    --line: #321d33;
+    --capital-purple: #6c1f6e;
+    --capital-purple-dark: #431046;
+    --capital-purple-soft: #f4e5f3;
+    --capital-cyan: #5cc8e8;
+    --capital-cyan-soft: #e8f8fc;
+    --capital-amber: #e8a020;
+    --capital-amber-soft: #fff4d8;
+    --capital-green: #3a8a3a;
+    --capital-green-soft: #eaf6ea;
+    --capital-red: #c0392b;
+    --capital-red-soft: #fdebea;
+    --accent: var(--capital-purple);
+    --accent-soft: var(--capital-purple-soft);
+    --accent-2: var(--capital-cyan);
+    --accent-2-soft: var(--capital-cyan-soft);
+    --lunch: var(--capital-cyan);
+    --lunch-soft: var(--capital-cyan-soft);
+    --done: var(--capital-green);
     --mono: "JetBrains Mono", ui-monospace, monospace;
     --hand: "Kalam", cursive;
     --title: "Caveat", cursive;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  html,body,#root{background:#f0eee9;}
-  body{background:#f0eee9;color:var(--ink);font-family:var(--hand);}
+  html,body,#root{width:100%;min-width:0;background:#f7f0f8;}
+  body{background:#f7f0f8;color:var(--ink);font-family:var(--hand);}
   input,textarea,select{
     color:var(--ink);
     background-color:var(--paper);
@@ -1138,7 +1237,7 @@ const CSS = `
     opacity:.65;
   }
 
-  .sk-box{border:1.6px solid var(--line);border-radius:14px 10px 12px 11px/11px 13px 10px 12px;background:var(--paper);position:relative;}
+  .sk-box{border:1.6px solid rgba(50,29,51,.88);border-radius:14px 10px 12px 11px/11px 13px 10px 12px;background:var(--paper);position:relative;box-shadow:0 8px 20px rgba(67,16,70,.045);}
   .sk-box.tight{border-radius:8px 6px 7px 6px/6px 8px 6px 7px;}
   .sk-box.dashed{border-style:dashed;}
   .sk-box.fill{background:var(--paper-2);}
@@ -1148,12 +1247,12 @@ const CSS = `
   .sk-hr.dashed{border-top-style:dashed;}
   .sk-hr.wavy{border:0;height:8px;background-image:radial-gradient(circle at 4px 4px,transparent 2px,var(--line) 2.2px,transparent 2.6px);background-size:10px 8px;opacity:.7;}
 
-  .chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border:1.3px solid var(--line);border-radius:999px;font-size:12px;font-family:var(--mono);background:var(--paper);white-space:nowrap;}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border:1.3px solid rgba(50,29,51,.75);border-radius:999px;font-size:12px;font-family:var(--mono);background:var(--paper);white-space:nowrap;}
   .chip.ink{background:var(--ink);color:var(--paper);border-color:var(--ink);}
-  .chip.accent{background:var(--accent);color:#fff;border-color:var(--ink);}
-  .chip.lunch{background:var(--lunch);color:#fff;border-color:var(--ink);}
+  .chip.accent{background:var(--capital-purple);color:#fff;border-color:var(--capital-purple-dark);}
+  .chip.lunch{background:var(--capital-cyan);color:#072d38;border-color:#2797b6;}
   .chip.dash{border-style:dashed;}
-  .chip.done-chip{background:var(--done);color:#fff;border-color:var(--done);}
+  .chip.done-chip{background:var(--capital-green);color:#fff;border-color:var(--capital-green);}
 
   .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block;flex-shrink:0;}
   .dot.g{background:#3a8a3a;}
@@ -1166,8 +1265,8 @@ const CSS = `
   .avatar.sm{width:28px;height:28px;font-size:14px;}
   .avatar.lg{width:54px;height:54px;font-size:26px;}
   .avatar.xl{width:80px;height:80px;font-size:38px;}
-  .avatar.lunch{border-color:var(--lunch);background:var(--lunch-soft);}
-  .avatar.busy{border-color:var(--accent);background:var(--accent-soft);}
+  .avatar.lunch{border-color:var(--capital-cyan);background:var(--capital-cyan-soft);box-shadow:0 0 0 4px rgba(92,200,232,.18);}
+  .avatar.busy{border-color:var(--capital-purple);background:var(--capital-purple-soft);box-shadow:0 0 0 4px rgba(108,31,110,.12);}
 
   .scribble{background:linear-gradient(transparent 55%,rgba(108,31,110,.25) 55% 80%,transparent 80%);padding:0 2px;}
   .sk-mono{font-family:var(--mono);}.sk-title{font-family:var(--title);letter-spacing:.5px;}
@@ -1187,15 +1286,15 @@ const CSS = `
   .phone .notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:70px;height:6px;background:var(--ink);border-radius:6px;}
   .phone-inner{width:100%;height:100%;overflow:hidden;position:relative;display:flex;flex-direction:column;}
 
-  .nav{width:210px;min-width:210px;background:var(--paper-2);border-right:1.4px solid var(--line);display:flex;flex-direction:column;transition:width .18s ease,min-width .18s ease;min-height:0;overflow:hidden;}
+  .nav{width:210px;min-width:210px;background:linear-gradient(180deg,#fffaff 0%,#f4e5f3 100%);border-right:1.4px solid rgba(108,31,110,.45);display:flex;flex-direction:column;transition:width .18s ease,min-width .18s ease;min-height:0;overflow:hidden;}
   .nav.collapsed{width:64px;min-width:64px;}
-  .nav-brand{padding:16px 18px;border-bottom:1.4px dashed var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .nav-brand{padding:16px 18px;border-bottom:1.4px dashed rgba(108,31,110,.45);display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(108,31,110,.06);}
   .nav-brand img{width:100%;max-width:160px;display:block;}
   .nav.collapsed .nav-brand{padding:14px 10px;justify-content:center;flex-direction:column;}
   .nav.collapsed .nav-brand img{max-width:38px;}
   .nav-item{display:flex;align-items:center;gap:10px;padding:9px 18px;font-size:13px;cursor:pointer;border-left:3px solid transparent;transition:all .15s;white-space:nowrap;}
-  .nav-item:hover{background:rgba(0,0,0,.04);}
-  .nav-item.active{border-left-color:var(--accent);background:var(--accent-soft);}
+  .nav-item:hover{background:rgba(108,31,110,.08);}
+  .nav-item.active{border-left-color:var(--capital-purple);background:#fff;color:var(--capital-purple-dark);box-shadow:inset 4px 0 0 var(--capital-purple);}
   .nav-section{font-family:var(--mono);font-size:10px;letter-spacing:.8px;color:var(--ink-3);padding:14px 18px 4px;text-transform:uppercase;}
   .nav.collapsed .nav-item{justify-content:center;padding:10px 0;gap:0;}
   .nav.collapsed .nav-label,.nav.collapsed .nav-section,.nav.collapsed .nav-member-meta,.nav.collapsed .nav-logout-text,.nav.collapsed .nav-remove{display:none!important;}
@@ -1212,14 +1311,15 @@ const CSS = `
   .content-area{flex:1;overflow-y:auto;background:var(--paper);}
   .mobile-only{display:none;}
 
-  .app-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1.4px solid var(--line);background:var(--paper);flex-shrink:0;gap:14px;}
+  .app-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1.4px solid rgba(108,31,110,.32);background:linear-gradient(90deg,#fffaff 0%,#f4e5f3 58%,#e8f8fc 100%);flex-shrink:0;gap:14px;position:relative;}
+  .app-bar::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:linear-gradient(90deg,var(--capital-purple),var(--capital-cyan),var(--capital-amber));}
   .app-bar-left{display:flex;align-items:center;gap:12px;min-width:0;flex:1;}
   .app-bar-divider{width:1px;height:30px;background:var(--line);opacity:.4;flex-shrink:0;}
 
-  .section-tabs{display:flex;border-bottom:1.4px solid var(--line);background:var(--paper-2);flex-shrink:0;overflow-x:auto;}
+  .section-tabs{display:flex;border-bottom:1.4px solid rgba(108,31,110,.28);background:var(--paper-2);flex-shrink:0;overflow-x:auto;}
   .section-tab{padding:9px 16px;font-family:var(--mono);font-size:11px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;border-right:1.2px solid var(--line);border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
   .section-tab:hover{background:rgba(0,0,0,.04);}
-  .section-tab.active{border-bottom-color:var(--accent);background:var(--paper);}
+  .section-tab.active{border-bottom-color:var(--capital-purple);background:var(--paper);color:var(--capital-purple-dark);}
 
   .list-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1.2px dashed var(--line);}
   .list-row:last-child{border-bottom:none;}
@@ -1247,11 +1347,53 @@ const CSS = `
   button.action:disabled{opacity:.45;cursor:not-allowed;color:var(--ink-3);}
   button.action.ink{background:var(--ink);color:var(--paper);border-color:var(--ink);}
   button.action.ink:hover{opacity:.85;}
-  button.action.accent{background:var(--accent);color:#fff;border-color:var(--accent);}
-  button.action.lunch-btn{background:var(--lunch);color:#fff;border-color:var(--lunch);}
+  button.action.accent{background:var(--capital-purple);color:#fff;border-color:var(--capital-purple);}
+  button.action.lunch-btn{background:var(--capital-cyan);color:#062f3b;border-color:#2797b6;}
 
-  .notif-banner{background:var(--lunch);color:#fff;padding:10px 18px;display:flex;align-items:center;gap:12px;border-bottom:1.4px solid var(--line);flex-shrink:0;}
-  .notif-banner.in-banner{background:var(--accent);}
+  .notif-banner{background:var(--capital-cyan);color:#062f3b;padding:10px 18px;display:flex;align-items:center;gap:12px;border-bottom:1.4px solid rgba(39,151,182,.65);flex-shrink:0;}
+  .notif-banner.in-banner{background:var(--capital-purple);color:#fff;border-bottom-color:var(--capital-purple-dark);}
+
+  .capital-status-card{position:relative;overflow:hidden;transition:border-color .16s,background .16s,box-shadow .16s,transform .16s;}
+  .capital-status-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--line);opacity:.9;}
+  .capital-status-card.state-in{background:var(--capital-purple-soft)!important;border-color:var(--capital-purple)!important;box-shadow:0 10px 22px rgba(108,31,110,.10);}
+  .capital-status-card.state-in::before{background:var(--capital-purple);}
+  .capital-status-card.state-lunch{background:var(--capital-cyan-soft)!important;border-color:var(--capital-cyan)!important;box-shadow:0 10px 22px rgba(92,200,232,.16);}
+  .capital-status-card.state-lunch::before{background:var(--capital-cyan);}
+  .capital-status-card.state-off{background:#fff!important;border-color:rgba(50,29,51,.32)!important;}
+  .capital-status-card.state-off::before{background:rgba(50,29,51,.35);}
+  .capital-status-card.state-alert{background:var(--capital-red-soft)!important;border-color:var(--capital-red)!important;}
+  .capital-status-card.state-alert::before{background:var(--capital-red);}
+  .capital-status-card.state-done{background:var(--capital-green-soft)!important;border-color:var(--capital-green)!important;}
+  .capital-status-card.state-done::before{background:var(--capital-green);}
+  .capital-section-title{color:var(--capital-purple-dark);}
+  .capital-meter{height:7px;border-radius:999px;background:linear-gradient(90deg,var(--capital-purple),var(--capital-cyan));box-shadow:inset 0 0 0 1px rgba(50,29,51,.18);}
+
+  .payroll-mobile-panel,.payroll-mobile-days{display:none;}
+  .payroll-control-grid{display:grid;grid-template-columns:minmax(160px,1fr) 138px 120px;gap:8px;align-items:center;}
+  .payroll-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 12px;}
+  .payroll-stat-card{border:1.3px solid rgba(50,29,51,.22);border-radius:10px;background:#fff;padding:10px 11px;min-width:0;}
+  .payroll-stat-card.primary{background:var(--capital-purple-soft);border-color:rgba(108,31,110,.45);}
+  .payroll-stat-card.lunch{background:var(--capital-cyan-soft);border-color:rgba(92,200,232,.7);}
+  .payroll-stat-label{font-family:var(--mono);font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px;}
+  .payroll-stat-value{font-family:var(--mono);font-size:16px;font-weight:800;color:var(--ink);}
+  .payroll-stat-note{font-size:11px;color:var(--ink-3);margin-top:2px;}
+  .payroll-cut-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0 12px;}
+  .payroll-cut-card{border:1.4px solid rgba(50,29,51,.28);border-radius:12px;background:#fff;padding:12px;box-shadow:0 8px 18px rgba(67,16,70,.05);}
+  .payroll-cut-card.confirmed{background:var(--capital-green-soft);border-color:var(--capital-green);}
+  .payroll-cut-card.review{background:var(--capital-amber-soft);border-color:var(--capital-amber);}
+  .payroll-cut-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;}
+  .payroll-cut-title strong{font-size:15px;}
+  .payroll-cut-meta{font-family:var(--mono);font-size:10px;color:var(--ink-3);}
+  .payroll-cut-lines{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0 10px;}
+  .payroll-cut-line{border:1px dashed rgba(50,29,51,.24);border-radius:8px;padding:7px;background:rgba(255,255,255,.62);}
+  .payroll-week-card{border:1.4px solid rgba(50,29,51,.22);border-radius:12px;background:#fff;margin-bottom:12px;overflow:hidden;}
+  .payroll-week-head{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;background:linear-gradient(90deg,var(--capital-purple-soft),var(--capital-cyan-soft));border-bottom:1px solid rgba(50,29,51,.18);}
+  .payroll-day-card{display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 12px;border-bottom:1px dashed rgba(50,29,51,.24);align-items:center;}
+  .payroll-day-card:last-child{border-bottom:0;}
+  .payroll-day-card.has-hours{background:#fff;}
+  .payroll-day-date{font-weight:800;font-size:13px;}
+  .payroll-day-meta{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:2px;}
+  .payroll-day-values{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;}
 
   @keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
   .fade-in{animation:fadeIn .2s ease;}
@@ -1263,24 +1405,26 @@ const CSS = `
   ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.2);border-radius:2px;}
 
   /* ── Barra de navegación móvil (oculta en escritorio) ── */
-  .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--paper-2);border-top:1.4px solid var(--line);z-index:200;padding:4px 6px env(safe-area-inset-bottom,0);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;justify-content:flex-start;}
+  .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--paper-2);border-top:1.4px solid var(--line);z-index:200;padding:4px 6px env(safe-area-inset-bottom,0);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;justify-content:flex-start;gap:2px;box-shadow:0 -8px 18px rgba(0,0,0,.08);touch-action:pan-x;scroll-snap-type:x proximity;}
   .mobile-nav::-webkit-scrollbar{display:none;}
-  .mobile-nav-item{flex:0 0 76px;min-width:76px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;cursor:pointer;color:var(--ink-3);font-family:var(--mono);font-size:9px;letter-spacing:.3px;text-transform:uppercase;border-top:2px solid transparent;transition:color .15s,border-color .15s;-webkit-tap-highlight-color:transparent;}
+  .mobile-nav-item{flex:0 0 76px;min-width:76px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;cursor:pointer;color:var(--ink-3);font-family:var(--mono);font-size:9px;letter-spacing:.3px;text-transform:uppercase;border-top:2px solid transparent;transition:color .15s,border-color .15s;-webkit-tap-highlight-color:transparent;scroll-snap-align:start;border-radius:8px 8px 0 0;}
   .mobile-nav-item.active{color:var(--accent);border-top-color:var(--accent);}
   .mobile-nav-item span{max-width:52px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center;}
   .mobile-nav-exit{color:#c0392b;}
 
   /* ── Responsive ── */
   @media (max-width:768px){
-    html,body,#root{min-height:100%;min-height:100dvh;}
-    body{overscroll-behavior-y:none;-webkit-text-size-adjust:100%;}
+    html,body,#root{min-height:100%;min-height:100dvh;max-width:100%;overflow:hidden;}
+    body{overscroll-behavior-y:none;-webkit-text-size-adjust:100%;position:fixed;inset:0;width:100%;}
+    input,textarea,select{font-size:16px!important;}
     .nav{display:none!important;}
     .mobile-nav{display:flex!important;}
     .app-layout{flex-direction:column;height:100dvh;overflow:hidden;background:var(--paper);}
-    .main-content{height:100dvh;background:var(--paper);}
-    .content-area{padding-bottom:calc(82px + env(safe-area-inset-bottom,0));-webkit-overflow-scrolling:touch;background:var(--paper);}
-    .app-bar{padding:10px 12px;gap:8px;align-items:flex-start;}
-    .app-bar-left{gap:8px;}
+    .main-content{height:100dvh;min-height:0;background:var(--paper);}
+    .content-area{padding-bottom:calc(92px + env(safe-area-inset-bottom,0));-webkit-overflow-scrolling:touch;background:var(--paper);min-height:0;overscroll-behavior:contain;}
+    .content-area > *{min-width:0;}
+    .app-bar{padding:9px 12px;gap:8px;align-items:flex-start;position:relative;z-index:2;}
+    .app-bar-left{gap:8px;width:100%;}
     .app-bar-divider{display:none;}
     .app-bar > .row{flex-wrap:wrap;justify-content:flex-end;gap:6px;}
     .app-bar .chip{display:none;}
@@ -1289,7 +1433,8 @@ const CSS = `
     .section-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
     .section-tabs::-webkit-scrollbar{display:none;}
     .section-tab{padding:10px 14px;font-size:10px;flex-shrink:0;}
-    .list-row{flex-wrap:wrap;gap:6px;}
+    .list-row{flex-wrap:wrap;gap:6px;align-items:flex-start;}
+    .kcard,.sk-box,.serv-card-emp{max-width:100%;overflow-wrap:anywhere;}
     .kcard{touch-action:manipulation;}
     .task-item{padding:12px 10px;align-items:flex-start;flex-wrap:wrap;}
     .cal-day{min-width:120px;}
@@ -1297,7 +1442,7 @@ const CSS = `
     .text-2xl{font-size:18px;}
     .text-xl{font-size:16px;}
     .phone{width:100%;max-width:260px;}
-    button.action{min-height:38px;padding:7px 12px;}
+    button.action{min-height:38px;padding:7px 12px;white-space:normal;line-height:1.15;}
     .mobile-nav-item{padding:8px 2px;}
     .mobile-only{display:block;}
     .desktop-only{display:none!important;}
@@ -1334,6 +1479,21 @@ const CSS = `
     .cal-day{min-width:210px;}
     .calendar-week{overflow-x:auto!important;-webkit-overflow-scrolling:touch;background:var(--paper);}
     .service-section{padding:12px!important;max-width:100%!important;}
+    .modal-overlay{align-items:flex-start;justify-content:center;overflow-y:auto;padding:10px 10px calc(94px + env(safe-area-inset-bottom,0));}
+    .modal-box{width:100%;max-width:520px;max-height:calc(100dvh - 24px);padding:18px;border-radius:14px;}
+    .field-group{margin-bottom:10px;}
+    .placeholder{min-height:88px;text-align:center;padding:16px;}
+    .payroll-mobile-panel,.payroll-mobile-days{display:block;}
+    .payroll-table-scroll{display:none!important;}
+    .payroll-control-grid{grid-template-columns:1fr;}
+    .payroll-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .payroll-stat-card{padding:10px;}
+    .payroll-stat-value{font-size:15px;}
+    .payroll-cut-grid{grid-template-columns:1fr;gap:8px;}
+    .payroll-cut-card{padding:11px;}
+    .payroll-cut-lines{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .payroll-day-card{grid-template-columns:1fr;gap:7px;}
+    .payroll-day-values{justify-content:flex-start;}
   }
   @media (max-width:480px){
     .app-bar{flex-direction:column;}
@@ -1382,6 +1542,25 @@ const CSS = `
   .service-actions .action{min-width:132px;justify-content:center;text-align:center;}
   .maint-card{padding:12px;border:1.3px dashed var(--line);border-radius:10px;background:var(--paper);cursor:pointer;transition:background .12s;}
   .maint-card:hover{background:var(--accent-soft);}
+  .employee-home{flex:1;overflow-y:auto;padding:16px 16px 80px;max-width:680px;margin:0 auto;width:100%;box-sizing:border-box;}
+  .employee-hero-card{padding:20px 18px 18px!important;margin-bottom:14px!important;text-align:left!important;}
+  .employee-hero-top{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+  .employee-status-orb{width:42px;height:42px;border-radius:999px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;background:#fff;box-shadow:0 0 0 6px rgba(108,31,110,.06);flex-shrink:0;}
+  .employee-status-orb.active{border-color:var(--capital-purple);background:var(--capital-purple);box-shadow:0 0 0 6px rgba(108,31,110,.12);}
+  .employee-status-orb.lunch{border-color:var(--capital-cyan);background:var(--capital-cyan);box-shadow:0 0 0 6px rgba(92,200,232,.18);}
+  .employee-status-orb span{width:13px;height:13px;border-radius:999px;background:currentColor;color:var(--ink);}
+  .employee-status-orb.active span,.employee-status-orb.lunch span{background:#fff;}
+  .employee-time-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0 14px;}
+  .employee-time-card{border:1.2px solid rgba(50,29,51,.22);border-radius:10px;background:rgba(255,255,255,.68);padding:10px;}
+  .employee-time-label{font-family:var(--mono);font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px;}
+  .employee-time-value{font-family:var(--mono);font-size:16px;font-weight:900;color:var(--ink);}
+  .employee-action-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+  .employee-primary-action,.employee-secondary-action{width:100%;min-height:44px!important;font-weight:800!important;}
+  .employee-payroll-card{border:1.5px solid rgba(108,31,110,.35)!important;border-radius:14px!important;background:linear-gradient(180deg,#fffaff 0%,#f7f0f8 100%)!important;padding:16px!important;margin-bottom:18px!important;}
+  .employee-payroll-cuts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:10px 0;}
+  .employee-payroll-cut{border:1.2px solid rgba(50,29,51,.22);border-radius:11px;background:#fff;padding:10px;}
+  .employee-payroll-cut.confirmed{background:var(--capital-green-soft);border-color:var(--capital-green);}
+  .employee-payroll-cut.review{background:var(--capital-amber-soft);border-color:var(--capital-amber);}
   @media(max-width:768px){
     .employee-header{padding:10px 12px;align-items:flex-start;}
     .employee-header-left{flex:1 1 170px;}
@@ -1395,6 +1574,12 @@ const CSS = `
     .service-actions .action{width:100%;min-width:0;white-space:normal;line-height:1.2;color:var(--ink);}
     .service-actions .action.accent,.service-actions .action.ink{color:#fff;}
     .service-actions .action:first-child{grid-column:1 / -1;}
+    .employee-home{padding:12px 12px 96px!important;max-width:100%;}
+    .employee-hero-card{padding:18px 14px!important;border-radius:16px!important;}
+    .employee-hero-top{align-items:flex-start;}
+    .employee-time-grid{grid-template-columns:1fr 1fr;}
+    .employee-action-row{grid-template-columns:1fr;}
+    .employee-payroll-cuts{grid-template-columns:1fr;}
   }
 
   /* ── Impresión de recibo ── */
@@ -1694,11 +1879,12 @@ function DashLista({ lunchState, shiftState, team = INITIAL_TEAM, onRemove }) {
         <div className="sk-mono text-xs tracked muted">PERSONAS (2)</div>
 
         {team.map((p, idx) => {
-          const isLunch = lunchState && p.id === "s";
           const inShift = !!shiftState[p.id];
+          const isLunch = inShift && lunchState && p.id === "s";
           const pStatus = !inShift ? "off" : isLunch ? "lunch" : "ok";
+          const statusClass = isLunch ? "state-lunch" : inShift ? "state-in" : "state-off";
           return (
-            <div key={p.id} className="sk-box p-4" style={isLunch ? { borderColor: "var(--lunch)", borderWidth: 2 } : inShift ? { borderColor: "var(--accent)", borderWidth: 2 } : {}}>
+            <div key={p.id} className={`sk-box p-4 capital-status-card ${statusClass}`}>
               <div className="row between">
                 <div className="row gap-3">
                   <Av p={p} size="lg" state={isLunch ? "lunch" : inShift ? "busy" : null} />
@@ -2158,7 +2344,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
               const isLunch = !!shiftState[p.id] && !!empLunch[p.id];
               const isIn = !!shiftState[p.id];
               return (
-                <div key={p.id} className="sk-box p-3" style={isLunch ? { borderColor: "var(--lunch)", borderWidth: 2, background: "var(--lunch-soft)" } : {}}>
+                <div key={p.id} className={`sk-box p-3 capital-status-card ${isLunch ? "state-lunch" : isIn ? "state-in" : "state-off"}`}>
                   <div className="row between" style={{ gap: 12 }}>
                     <div className="row gap-3" style={{ minWidth: 0 }}>
                       <Av p={p} size="lg" state={isLunch ? "lunch" : isIn ? "busy" : null} />
@@ -2185,7 +2371,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
         </div>
 
         <div className="stack" style={{ gap: 16 }}>
-          <div className="sk-box p-4" style={lunchCount ? { borderColor: "var(--lunch)", borderWidth: 2 } : {}}>
+          <div className={`sk-box p-4 capital-status-card ${lunchCount ? "state-lunch" : "state-off"}`}>
             <div className="row between" style={{ marginBottom: 10 }}>
               <div className="sk-mono text-xs tracked muted">AHORA EN ALMUERZO</div>
               <span className="chip lunch">{lunchCount}</span>
@@ -2223,7 +2409,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
             {todayRecords.length ? (
               <div className="stack" style={{ gap: 8 }}>
                 {todayRecords.map(r => (
-                  <div key={r.id} className="sk-box p-3" style={r.status === "abierto" ? { borderColor: "var(--lunch)", borderWidth: 2, background: "var(--lunch-soft)" } : {}}>
+                  <div key={r.id} className={`sk-box p-3 capital-status-card ${r.status === "abierto" ? "state-lunch" : "state-done"}`}>
                     <div className="row between" style={{ gap: 10, flexWrap: "wrap" }}>
                       <div style={{ minWidth: 0 }}>
                         <div className="text-sm" style={{ fontWeight: 800 }}>{r.employeeName || team.find(p => p.id === r.employeeId)?.name || "Equipo"}</div>
@@ -2476,6 +2662,22 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
       updatedAt: nowIso,
     });
   };
+  const timesheetMonthLabel = `${MONTH_NAMES_ES[Number(timesheetMonth.slice(5, 7)) - 1]} ${timesheetMonth.slice(0, 4)}`;
+  const monthRegisteredDays = timesheetDates.filter(d => recordsForDate(d).length || lunchMinutesForDate(d)).length;
+  const payrollCuts: Array<{ period: PayrollPeriod; label: string; hours: number; lunchMinutes: number; amount: number; confirmation?: PayrollConfirmation; fromDate: string; toDate: string }> = (["q1", "q2"] as PayrollPeriod[]).map(period => {
+    const range = payrollPeriodRange(timesheetMonth, period);
+    const hours = period === "q1" ? q1Hours : q2Hours;
+    const lunchMinutes = period === "q1" ? q1LunchMinutes : q2LunchMinutes;
+    return {
+      period,
+      label: payrollPeriodLabel(period),
+      hours,
+      lunchMinutes,
+      amount: Math.round(hours * hourlyRate),
+      confirmation: confirmationFor(period),
+      ...range,
+    };
+  });
 
   return (
     <div className="fade-in" style={{ padding: 18 }}>
@@ -2497,7 +2699,112 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                 <input className="field-input" type="number" min={0} inputMode="numeric" value={hourlyRateInput} onChange={e => setHourlyRateInput(e.target.value)} style={{ width: 110, padding: "6px 10px" }} title="Valor referencia" />
               </div>
             </div>
-            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <div className="payroll-mobile-panel">
+              <div style={{ marginBottom: 8 }}>
+                <div className="sk-mono text-xs tracked muted">Nómina móvil</div>
+                <div className="sk-title text-xl">{selectedTimesheetPerson?.name || "Equipo"} · {timesheetMonthLabel}</div>
+              </div>
+              <div className="payroll-stat-grid">
+                <div className="payroll-stat-card primary">
+                  <div className="payroll-stat-label">Neto mes</div>
+                  <div className="payroll-stat-value">{fmtHours(monthHours)}</div>
+                  <div className="payroll-stat-note">{monthRegisteredDays} dia(s) con registro</div>
+                </div>
+                <div className="payroll-stat-card lunch">
+                  <div className="payroll-stat-label">Almuerzos</div>
+                  <div className="payroll-stat-value">{fmtMinutes(monthLunchMinutes)}</div>
+                  <div className="payroll-stat-note">Descontado del tiempo</div>
+                </div>
+                <div className="payroll-stat-card">
+                  <div className="payroll-stat-label">Valor referencia</div>
+                  <div className="payroll-stat-value">{money(hourlyRate)}</div>
+                  <div className="payroll-stat-note">Por hora</div>
+                </div>
+              </div>
+              <div className="payroll-cut-grid">
+                {payrollCuts.map(cut => {
+                  const conf = cut.confirmation;
+                  const review = conf?.status === "requiere_revision";
+                  return (
+                    <div key={cut.period} className={`payroll-cut-card ${conf?.status === "confirmada" ? "confirmed" : review ? "review" : ""}`}>
+                      <div className="payroll-cut-title">
+                        <div>
+                          <strong>{cut.label}</strong>
+                          <div className="payroll-cut-meta">{cut.fromDate} a {cut.toDate}</div>
+                        </div>
+                        <span className={conf?.status === "confirmada" ? "chip done-chip" : review ? "chip" : "chip dash"} style={{ fontSize: 10 }}>
+                          {conf?.status === "confirmada" ? "confirmado" : review ? "revisar" : "pendiente"}
+                        </span>
+                      </div>
+                      <div className="payroll-cut-lines">
+                        <div className="payroll-cut-line">
+                          <div className="payroll-stat-label">Horas</div>
+                          <div className="sk-mono" style={{ fontWeight: 800 }}>{fmtHours(cut.hours)}</div>
+                        </div>
+                        <div className="payroll-cut-line">
+                          <div className="payroll-stat-label">Almuerzo</div>
+                          <div className="sk-mono" style={{ fontWeight: 800 }}>{fmtMinutes(cut.lunchMinutes)}</div>
+                        </div>
+                        <div className="payroll-cut-line">
+                          <div className="payroll-stat-label">Total</div>
+                          <div className="sk-mono" style={{ fontWeight: 800 }}>{money(cut.amount)}</div>
+                        </div>
+                        <div className="payroll-cut-line">
+                          <div className="payroll-stat-label">Guardado</div>
+                          <div className="sk-mono" style={{ fontWeight: 800 }}>{conf ? money(conf.amount) : "--"}</div>
+                        </div>
+                      </div>
+                      <button className="action accent" style={{ width: "100%", fontSize: 12 }} onClick={() => confirmPeriod(cut.period)}>
+                        Confirmar {cut.label}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="payroll-mobile-days">
+              {timesheetWeeks.map((week, wi) => {
+                const weekHours = week.reduce((sum, date) => sum + hoursForDate(date), 0);
+                const weekLunch = week.reduce((sum, date) => sum + lunchMinutesForDate(date), 0);
+                return (
+                  <div key={`mobile-${week[0]}`} className="payroll-week-card">
+                    <div className="payroll-week-head">
+                      <div>
+                        <div className="sk-mono text-xs tracked muted">Semana {wi + 1}</div>
+                        <div style={{ fontWeight: 800 }}>{dateLabelEs(week[0])} - {dateLabelEs(week[week.length - 1])}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div className="sk-mono" style={{ fontWeight: 900 }}>{fmtHours(weekHours)}</div>
+                        <div className="sk-mono text-xs muted">{fmtMinutes(weekLunch)} almuerzo</div>
+                      </div>
+                    </div>
+                    {week.map(date => {
+                      const dayRecords = recordsForDate(date);
+                      const first = dayRecords[0];
+                      const last = dayRecords[dayRecords.length - 1];
+                      const dayHours = hoursForDate(date);
+                      const lunchMinutes = lunchMinutesForDate(date);
+                      return (
+                        <div key={`mobile-${date}`} className={`payroll-day-card ${dayHours ? "has-hours" : ""}`}>
+                          <div>
+                            <div className="payroll-day-date">{dateLabelEs(date)} - {dayLabelEs(date)}</div>
+                            <div className="payroll-day-meta">
+                              Inicio {first ? fmtHour(first.entryTime) : "--"} · Cierre {last?.exitTime ? fmtHour(last.exitTime) : first?.status === "abierto" ? "abierto" : "--"}
+                            </div>
+                          </div>
+                          <div className="payroll-day-values">
+                            <span className={dayHours ? "chip accent" : "chip dash"}>{dayHours ? fmtHours(dayHours) : "sin horas"}</span>
+                            {!!lunchMinutes && <span className="chip lunch">{fmtMinutes(lunchMinutes)}</span>}
+                            <button className="action" style={{ fontSize: 11, minHeight: 30, padding: "4px 10px" }} onClick={() => setEditingDate(date)}>Editar</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="payroll-table-scroll" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
               <div style={{ minWidth: 720 }}>
                 <div className="row gap-2" style={{ marginBottom: 10, flexWrap: "wrap" }}>
                   <span className="chip">NETO MES {fmtHours(monthHours)}</span>
@@ -2625,18 +2932,17 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
             </div>
             <hr className="sk-hr wavy" />
             <div className="row gap-3" style={{ flexWrap: "wrap" }}>
-              {team.map(p => (
-                <div key={p.id} className="sk-box tight p-3" style={{
-                  flex: 1, minWidth: 160,
-                  background: shiftState[p.id] ? (empLunch[p.id] || (lunchState && p.id === "s") ? "var(--lunch-soft)" : "var(--accent-soft)") : "var(--paper-2)",
-                  borderColor: shiftState[p.id] ? (empLunch[p.id] || (lunchState && p.id === "s") ? "var(--lunch)" : "var(--accent)") : "var(--line)"
-                }}>
+              {team.map(p => {
+                const isIn = !!shiftState[p.id];
+                const isOnLunch = isIn && (!!empLunch[p.id] || (!!lunchState && p.id === "s"));
+                return (
+                <div key={p.id} className={`sk-box tight p-3 capital-status-card ${isOnLunch ? "state-lunch" : isIn ? "state-in" : "state-off"}`} style={{ flex: 1, minWidth: 160 }}>
                   <div className="row gap-2">
-                    <Av p={p} size="sm" state={shiftState[p.id] ? (empLunch[p.id] || (lunchState && p.id === "s") ? "lunch" : "busy") : null} />
+                    <Av p={p} size="sm" state={isIn ? (isOnLunch ? "lunch" : "busy") : null} />
                     <div className="stack" style={{ gap: 0 }}>
                       <span className="text-sm" style={{ fontWeight: 700 }}>{p.name}</span>
                       <span className="sk-mono text-xs muted">
-                        {shiftState[p.id] ? (empLunch[p.id] || (lunchState && p.id === "s") ? "almuerzo" : `${fmtTime(getElapsed(shiftState[p.id]))} registradas`) : "día sin iniciar"}
+                        {isIn ? (isOnLunch ? "almuerzo" : `${fmtTime(getElapsed(shiftState[p.id]))} registradas`) : "día sin iniciar"}
                       </span>
                     </div>
                   </div>
@@ -2645,7 +2951,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                     {typeof shiftState[p.id] === "string" ? `INICIO ${fmtHour(shiftState[p.id] as string)}` : "— sin iniciar —"}
                   </div>
                   <div style={{ marginTop: 8 }}>
-                    {!shiftState[p.id] ? (
+                    {!isIn ? (
                       <button className="action accent" style={{ width: "100%", fontSize: 12 }} onClick={() => onStartAttendance ? onStartAttendance(p) : setShiftState(s => ({ ...s, [p.id]: new Date().toISOString() }))}>
                         <Icon d={I.in} size={14} /> INICIAR DÍA
                       </button>
@@ -2656,7 +2962,8 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -2770,6 +3077,11 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
 function IntegracionesSection({ loyverseToken = "", onSetLoyverseToken = (_: string) => {} }: { loyverseToken?: string; onSetLoyverseToken?: (t: string) => void }) {
   const [tokenInput, setTokenInput] = useState(loyverseToken);
   const [tokenVisible, setTokenVisible] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+
+  useEffect(() => {
+    setTokenInput(loyverseToken);
+  }, [loyverseToken]);
 
   return (
     <div style={{ padding: "24px 20px", maxWidth: 560 }}>
@@ -2788,7 +3100,7 @@ function IntegracionesSection({ loyverseToken = "", onSetLoyverseToken = (_: str
           </span>
         </div>
         <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 10 }}>
-          Token API de Loyverse. Genéralo en <strong>Loyverse → Perfil → API</strong>. Se guarda solo en este navegador.
+          Token API de Loyverse. Genéralo en <strong>Loyverse → Perfil → API</strong>. Se guarda para que la app pueda buscar productos y enviar recibos.
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <input
@@ -2797,17 +3109,20 @@ function IntegracionesSection({ loyverseToken = "", onSetLoyverseToken = (_: str
             value={tokenInput}
             onChange={e => setTokenInput(e.target.value)}
             placeholder="Pega tu token aquí..."
-            onKeyDown={e => { if (e.key === "Enter") { onSetLoyverseToken(tokenInput.trim()); alert(tokenInput.trim() ? "✅ Token guardado." : "Token eliminado."); } }}
+            onKeyDown={e => { if (e.key === "Enter") { const clean = normalizeLoyverseToken(tokenInput); setTokenInput(clean); onSetLoyverseToken(clean); alert(clean ? "✅ Token guardado." : "Token eliminado."); } }}
           />
           <button className="action" style={{ fontSize: 11 }} onClick={() => setTokenVisible(v => !v)}>{tokenVisible ? "Ocultar" : "Ver"}</button>
-          <button className="action ink" style={{ fontSize: 11 }} onClick={() => { onSetLoyverseToken(tokenInput.trim()); alert(tokenInput.trim() ? "✅ Token guardado." : "Token eliminado."); }}>Guardar</button>
+          <button className="action ink" style={{ fontSize: 11 }} onClick={() => { const clean = normalizeLoyverseToken(tokenInput); setTokenInput(clean); onSetLoyverseToken(clean); alert(clean ? "✅ Token guardado." : "Token eliminado."); }}>Guardar</button>
         </div>
         {loyverseToken && (
           <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-            <button className="action" style={{ fontSize: 10 }} onClick={async () => {
-              const res = await lookupLoyverseSKU("test", loyverseToken);
-              alert(res === null ? "✅ Token válido (producto 'test' no encontrado, normal).\nConexión con Loyverse funciona." : `✅ Conexión OK · ${res.name}`);
-            }}>Probar conexión</button>
+            <button className="action" style={{ fontSize: 10 }} disabled={testingConnection} onClick={async () => {
+              setTestingConnection(true);
+              const clean = normalizeLoyverseToken(tokenInput || loyverseToken);
+              const res = await testLoyverseConnection(clean);
+              setTestingConnection(false);
+              alert(res.success ? "✅ Conexión con Loyverse OK." : `❌ No se pudo conectar con Loyverse:\n${res.error}`);
+            }}>{testingConnection ? "Probando..." : "Probar conexión"}</button>
             <button className="action" style={{ fontSize: 10, color: "#c0392b" }} onClick={() => { setTokenInput(""); onSetLoyverseToken(""); }}>Eliminar token</button>
           </div>
         )}
@@ -4650,10 +4965,15 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate, initialServic
     if (!sku.trim()) return;
     if (!loyverseToken) { alert("Configura el token de Loyverse en la sección Integraciones del menú."); return; }
     setQaRow(r => ({ ...r, looking: true, found: null }));
-    const result = await lookupLoyverseSKU(sku, loyverseToken);
-    setQaRow(r => result
-      ? { ...r, description: result.name, unitPrice: String(result.price), loyverseItemId: result.itemId, loyverseVariantId: result.variantId, looking: false, found: true }
-      : { ...r, loyverseItemId: undefined, loyverseVariantId: undefined, looking: false, found: false });
+    try {
+      const result = await lookupLoyverseSKU(sku, loyverseToken);
+      setQaRow(r => result
+        ? { ...r, description: result.name, unitPrice: String(result.price), loyverseItemId: result.itemId, loyverseVariantId: result.variantId, looking: false, found: true }
+        : { ...r, loyverseItemId: undefined, loyverseVariantId: undefined, looking: false, found: false });
+    } catch (error: any) {
+      setQaRow(r => ({ ...r, looking: false, found: null, loyverseItemId: undefined, loyverseVariantId: undefined }));
+      alert(`No se pudo consultar Loyverse:\n${loyverseErrorMessage(error)}`);
+    }
   };
   const doCustomerLookup = async () => {
     const doc = clientDocument.trim();
@@ -4679,7 +4999,15 @@ function NewServiceModal({ onClose, onAdd, team = [], initialDate, initialServic
     }
     setCustomerLooking(true);
     setCustomerFound(null);
-    const result = await lookupLoyverseCustomerByDocument(doc, loyverseToken);
+    let result: Awaited<ReturnType<typeof lookupLoyverseCustomerByDocument>> = null;
+    try {
+      result = await lookupLoyverseCustomerByDocument(doc, loyverseToken);
+    } catch (error: any) {
+      setCustomerLooking(false);
+      setCustomerFound(null);
+      alert(`No se pudo consultar clientes en Loyverse:\n${loyverseErrorMessage(error)}`);
+      return;
+    }
     setCustomerLooking(false);
     if (!result) { setCustomerFound(false); setLoyverseCustomerId(""); return; }
     setCustomerFound(true);
@@ -5570,11 +5898,16 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
     if (!sku.trim()) return;
     if (!loyverseToken) { alert("Configura el token de Loyverse en la sección Integraciones del menú."); return; }
     setter(p => ({ ...p, [serviceId]: { ...(p[serviceId] || emptyLookup()), sku, looking: true, found: null } }));
-    const result = await lookupLoyverseSKU(sku, loyverseToken);
-    setter(p => result
-      ? { ...p, [serviceId]: { ...(p[serviceId] || emptyLookup()), sku, description: result.name, unitPrice: String(result.price), loyverseItemId: result.itemId, loyverseVariantId: result.variantId, looking: false, found: true } }
-      : { ...p, [serviceId]: { ...(p[serviceId] || emptyLookup()), sku, loyverseItemId: undefined, loyverseVariantId: undefined, looking: false, found: false } }
-    );
+    try {
+      const result = await lookupLoyverseSKU(sku, loyverseToken);
+      setter(p => result
+        ? { ...p, [serviceId]: { ...(p[serviceId] || emptyLookup()), sku, description: result.name, unitPrice: String(result.price), loyverseItemId: result.itemId, loyverseVariantId: result.variantId, looking: false, found: true } }
+        : { ...p, [serviceId]: { ...(p[serviceId] || emptyLookup()), sku, loyverseItemId: undefined, loyverseVariantId: undefined, looking: false, found: false } }
+      );
+    } catch (error: any) {
+      setter(p => ({ ...p, [serviceId]: { ...(p[serviceId] || emptyLookup()), sku, looking: false, found: null, loyverseItemId: undefined, loyverseVariantId: undefined } }));
+      alert(`No se pudo consultar Loyverse:\n${loyverseErrorMessage(error)}`);
+    }
   };
 
   // ── Quick-add repuestos USADOS (factura final) ──────────────────────────────
@@ -5589,7 +5922,14 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
     let item = row;
     if (!item.loyverseItemId) {
       setBillingPartAdd(p => ({ ...p, [s.id]: { ...(p[s.id] || emptyQA()), ...row, looking: true, found: null } }));
-      const result = await lookupLoyverseSKU(row.sku, loyverseToken);
+      let result: LoyverseLookupResult | null = null;
+      try {
+        result = await lookupLoyverseSKU(row.sku, loyverseToken);
+      } catch (error: any) {
+        setBillingPartAdd(p => ({ ...p, [s.id]: { ...(p[s.id] || emptyQA()), ...row, looking: false, found: null, loyverseItemId: undefined, loyverseVariantId: undefined } }));
+        alert(`No se pudo consultar Loyverse:\n${loyverseErrorMessage(error)}`);
+        return;
+      }
       if (!result) {
         setBillingPartAdd(p => ({ ...p, [s.id]: { ...(p[s.id] || emptyQA()), ...row, looking: false, found: false, loyverseItemId: undefined, loyverseVariantId: undefined } }));
         alert("Código no encontrado en Loyverse. Para facturar desde Loyverse, primero debe existir en el catálogo.");
@@ -5622,7 +5962,14 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
     let item = row;
     if (!item.loyverseItemId) {
       setBillingServiceAdd(p => ({ ...p, [s.id]: { ...(p[s.id] || emptyQA()), ...row, looking: true, found: null } }));
-      const result = await lookupLoyverseSKU(row.sku, loyverseToken);
+      let result: LoyverseLookupResult | null = null;
+      try {
+        result = await lookupLoyverseSKU(row.sku, loyverseToken);
+      } catch (error: any) {
+        setBillingServiceAdd(p => ({ ...p, [s.id]: { ...(p[s.id] || emptyQA()), ...row, looking: false, found: null, loyverseItemId: undefined, loyverseVariantId: undefined } }));
+        alert(`No se pudo consultar Loyverse:\n${loyverseErrorMessage(error)}`);
+        return;
+      }
       if (!result) {
         setBillingServiceAdd(p => ({ ...p, [s.id]: { ...(p[s.id] || emptyQA()), ...row, looking: false, found: false, loyverseItemId: undefined, loyverseVariantId: undefined } }));
         alert("Servicio no encontrado en Loyverse. Para facturarlo desde Loyverse, primero debe existir en el catálogo.");
@@ -5799,8 +6146,8 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
   const handleSendToLoyverse = async (s: BikeService) => {
     if (!loyverseToken) { alert("Configura el token de Loyverse en la sección Perfil."); return; }
     const billing = billingWithServiceLine(s);
-    const hasLoyverseItems = [...billing.parts, ...billing.labor].some(i => i.loyverseItemId);
-    if (!hasLoyverseItems) { alert("Agrega al menos un repuesto o servicio con código Loyverse para sincronizar."); return; }
+    const hasLoyverseItems = [...billing.parts, ...billing.labor].some(i => i.loyverseVariantId);
+    if (!hasLoyverseItems) { alert("Agrega al menos un repuesto o servicio buscado en Loyverse para sincronizar."); return; }
     setLoyverseSending(p => ({ ...p, [s.id]: true }));
     const result = await sendBillingToLoyverse(billing, s, loyverseToken);
     setLoyverseSending(p => ({ ...p, [s.id]: false }));
@@ -5814,7 +6161,13 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
 
   const fillDraftCustomerFromLoyverse = async (serviceId: string, doc: string) => {
     if (!loyverseToken) { alert("Configura el token de Loyverse en Integraciones."); return; }
-    const result = await lookupLoyverseCustomerByDocument(doc, loyverseToken);
+    let result: Awaited<ReturnType<typeof lookupLoyverseCustomerByDocument>> = null;
+    try {
+      result = await lookupLoyverseCustomerByDocument(doc, loyverseToken);
+    } catch (error: any) {
+      alert(`No se pudo consultar clientes en Loyverse:\n${loyverseErrorMessage(error)}`);
+      return;
+    }
     if (!result) {
       alert("Cliente no encontrado en Loyverse. Puedes dejar los datos manuales.");
       return;
@@ -7717,9 +8070,20 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
     .filter(c => c.employeeId === session.id)
     .sort((a, b) => `${b.month}-${b.period}`.localeCompare(`${a.month}-${a.period}`));
   const myCurrentPayroll = myPayrollConfirmations.filter(c => c.month === payrollMonth);
+  const myPayrollMonthLabel = `${MONTH_NAMES_ES[Number(payrollMonth.slice(5, 7)) - 1]} ${payrollMonth.slice(0, 4)}`;
+  const myPayrollCutDetails = (["q1", "q2"] as PayrollPeriod[]).map(period => {
+    const range = payrollPeriodRange(payrollMonth, period);
+    const attendance = myMonthAttendance.filter(r => r.date >= range.fromDate && r.date <= range.toDate);
+    const lunches = myMonthLunchRecords.filter(r => r.date >= range.fromDate && r.date <= range.toDate);
+    const grossHours = attendance.reduce((sum, r) => sum + (r.status === "abierto" ? hoursBetween(r.entryTime, new Date().toISOString()) : (Number(r.hoursWorked) || 0)), 0);
+    const lunchMinutes = lunches.reduce((sum, r) => sum + (Number(r.minutes) || (r.status === "abierto" ? minutesBetween(r.startTime, new Date().toISOString()) : 0)), 0);
+    const hours = Math.max(0, Math.round((grossHours - (lunchMinutes / 60)) * 100) / 100);
+    const confirmation = myCurrentPayroll.find(c => c.period === period);
+    return { period, label: payrollPeriodLabel(period), ...range, hours, lunchMinutes, confirmation };
+  });
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100dvh", minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <style>{CSS}</style>
       {/* Header */}
       <div className="employee-header">
@@ -7781,57 +8145,60 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
         </div>
       )}
 
-      {tab === "inicio" && <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 80px", maxWidth: 640, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
+      {tab === "inicio" && <div className="employee-home" style={{ flex: 1, overflowY: "auto", padding: "16px 16px 80px", maxWidth: 640, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
         {/* Inicio día */}
-        <div style={{ background: isLunch ? "#fff3e0" : isIn ? "var(--accent-soft)" : "var(--paper-2)", border: `2px solid ${isLunch ? "#e8a020" : isIn ? "var(--accent)" : "var(--line)"}`, borderStyle: isIn ? "solid" : "dashed", borderRadius: 14, padding: 22, textAlign: "center", marginBottom: 18 }}>
-          <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 999,
-                background: isLunch ? "#e8a020" : isIn ? "#4caf50" : "transparent",
-                border: `2px solid ${isLunch ? "#e8a020" : isIn ? "#4caf50" : "var(--ink)"}`,
-                display: "inline-block",
-                boxShadow: isLunch || isIn ? "0 0 0 5px rgba(108,31,110,.08)" : "none",
+        <div className={`sk-box capital-status-card employee-hero-card ${isLunch ? "state-lunch" : isIn ? "state-in" : "state-off"}`} style={{ borderStyle: isIn ? "solid" : "dashed", borderRadius: 14, padding: 22, textAlign: "center", marginBottom: 18 }}>
+          <div className="employee-hero-top">
+            <div className={`employee-status-orb ${isLunch ? "lunch" : isIn ? "active" : ""}`} aria-hidden="true"><span /></div>
+            <div style={{ minWidth: 0 }}>
+              <div className="sk-mono text-xs tracked muted">Mi turno de hoy</div>
+              <div style={{ fontWeight: 800, fontSize: 21, lineHeight: 1.05 }}>
+                {isLunch ? "En almuerzo" : isIn ? "Día iniciado" : "Día sin iniciar"}
+              </div>
+              <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3 }}>
+                {isLunch ? "Pausa activa, no molestar" : isIn ? "Tu tiempo se está registrando" : "Marca tu entrada para iniciar nómina"}
+              </div>
+            </div>
+          </div>
+          <div className="employee-time-grid">
+            <div className="employee-time-card">
+              <div className="employee-time-label">Entrada</div>
+              <div className="employee-time-value">{entryTimeStr || "--:--"}</div>
+            </div>
+            <div className="employee-time-card">
+              <div className="employee-time-label">Tiempo hoy</div>
+              <div className="employee-time-value">{elapsedStr || "0h 00m"}</div>
+            </div>
+            <div className="employee-time-card">
+              <div className="employee-time-label">Almuerzo</div>
+              <div className="employee-time-value">{isLunch ? lunchElapsedStr : "0h 00m"}</div>
+            </div>
+            <div className="employee-time-card">
+              <div className="employee-time-label">Estado</div>
+              <div className="employee-time-value" style={{ color: isLunch ? "var(--lunch)" : isIn ? "var(--accent)" : "var(--ink-3)" }}>
+                {isLunch ? "Pausa" : isIn ? "Activo" : "Fuera"}
+              </div>
+            </div>
+          </div>
+          <div className="employee-action-row">
+            <button
+              className="employee-primary-action"
+              style={{ fontSize: 14, padding: "10px 22px", borderRadius: 999, background: isIn ? "var(--capital-red)" : "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => {
+                if (isIn) {
+                  onCloseAttendance ? onCloseAttendance(me) : setShift((s: any) => ({ ...s, [session.id!]: false }));
+                  if (isLunch) setEmpLunch?.(l => ({ ...l, [session.id!]: false }));
+                } else {
+                  onStartAttendance ? onStartAttendance(me) : setShift((s: any) => ({ ...s, [session.id!]: new Date().toISOString() }));
+                }
               }}
-            />
-          </div>
-          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>
-            {isLunch ? "En almuerzo" : isIn ? "Día iniciado" : "Día sin iniciar"}
-          </div>
-          <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6 }}>
-            {isLunch ? "Tiempo de almuerzo activo" : isIn ? "Toca para cerrar tu día" : "Toca para iniciar tu día"}
-          </div>
-          {isIn && entryTimeStr && (
-            <div className="sk-mono" style={{ fontSize: 12, color: "var(--accent)", marginBottom: 14 }}>
-              Inicio: {entryTimeStr}{elapsedStr ? ` · ${elapsedStr} registradas` : ""}
-            </div>
-          )}
-          {isLunch && (
-            <div className="sk-mono" style={{ fontSize: 14, color: "#e8a020", fontWeight: 800, marginBottom: 14 }}>
-              Almuerzo: {lunchElapsedStr}{lunchStartStr ? ` · inició ${lunchStartStr}` : ""}
-            </div>
-          )}
-          {!isIn && <div style={{ marginBottom: 14 }} />}
-          <button
-            style={{ fontSize: 14, padding: "10px 32px", borderRadius: 999, background: isIn ? "#e05555" : "var(--accent)", color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}
-            onClick={() => {
-              if (isIn) {
-                onCloseAttendance ? onCloseAttendance(me) : setShift((s: any) => ({ ...s, [session.id!]: false }));
-                if (isLunch) setEmpLunch?.(l => ({ ...l, [session.id!]: false }));
-              } else {
-                onStartAttendance ? onStartAttendance(me) : setShift((s: any) => ({ ...s, [session.id!]: new Date().toISOString() }));
-              }
-            }}
-          >
-            {isIn ? "Cerrar día" : "Iniciar día"}
-          </button>
-          {isIn && (
-            <div style={{ marginTop: 10 }}>
+            >
+              {isIn ? "Cerrar día" : "Iniciar día"}
+            </button>
+            {isIn && (
               <button
-                style={{ fontSize: 13, padding: "8px 28px", borderRadius: 999, background: isLunch ? "#e8a020" : "transparent", color: isLunch ? "#fff" : "#e8a020", border: "1.5px solid #e8a020", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}
+                className="employee-secondary-action"
+                style={{ fontSize: 13, padding: "8px 22px", borderRadius: 999, background: isLunch ? "var(--lunch)" : "#fff", color: isLunch ? "#062f3b" : "var(--lunch)", border: "1.5px solid var(--lunch)", cursor: "pointer", fontFamily: "inherit", fontWeight: 700 }}
                 onClick={() => {
                   if (isLunch) {
                     onEndLunch ? onEndLunch(me) : setEmpLunch?.(l => ({ ...l, [session.id!]: false }));
@@ -7842,20 +8209,42 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
               >
                 {isLunch ? "Terminar almuerzo" : "Iniciar almuerzo"}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Mis tareas del día */}
-        <div style={{ border: "1.5px solid var(--line)", borderRadius: 12, padding: 16, marginBottom: 18, background: "var(--paper-2)" }}>
+        <div className="employee-payroll-card" style={{ border: "1.5px solid var(--line)", borderRadius: 12, padding: 16, marginBottom: 18, background: "var(--paper-2)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginBottom: 10 }}>
             <div style={{ fontWeight: 700, fontSize: 15 }}>Mi resumen de pagos</div>
-            <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>{MONTH_NAMES_ES[Number(payrollMonth.slice(5, 7)) - 1]} {payrollMonth.slice(0, 4)}</span>
+            <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>{myPayrollMonthLabel}</span>
           </div>
           <div className="row gap-2" style={{ flexWrap: "wrap", marginBottom: 10 }}>
             <span className="chip">Mes neto {fmtHours(myMonthHours)}</span>
             <span className="chip lunch">Almuerzo {myMonthLunchMinutes} min</span>
             <span className="chip">{myMonthAttendance.length} registro(s)</span>
+          </div>
+          <div className="employee-payroll-cuts">
+            {myPayrollCutDetails.map(cut => {
+              const conf = cut.confirmation;
+              const review = conf?.status === "requiere_revision";
+              return (
+                <div key={cut.period} className={`employee-payroll-cut ${conf?.status === "confirmada" ? "confirmed" : review ? "review" : ""}`}>
+                  <div className="row between" style={{ alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 14 }}>{cut.label}</div>
+                      <div className="sk-mono text-xs muted">{cut.fromDate.slice(8, 10)} a {cut.toDate.slice(8, 10)}</div>
+                    </div>
+                    <span className={conf?.status === "confirmada" ? "chip done-chip" : review ? "chip" : "chip dash"} style={{ fontSize: 10 }}>
+                      {conf?.status === "confirmada" ? "confirmado" : review ? "revisar" : "pendiente"}
+                    </span>
+                  </div>
+                  <div className="sk-mono" style={{ fontSize: 13, fontWeight: 900 }}>{fmtHours(cut.hours)}</div>
+                  <div className="text-xs muted">{fmtMinutes(cut.lunchMinutes)} de almuerzo</div>
+                  {conf && <div className="sk-mono" style={{ fontSize: 12, fontWeight: 900, marginTop: 6 }}>{money(conf.amount)}</div>}
+                </div>
+              );
+            })}
           </div>
           {myCurrentPayroll.length ? myCurrentPayroll.map(c => (
             <div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", padding: "9px 0", borderTop: "1px dashed var(--line)" }}>
@@ -8392,6 +8781,10 @@ export default function App() {
           if (data.adminPassword) {
             localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
             setAdminPasswordState(data.adminPassword);
+          }
+          if (data.loyverseToken) {
+            try { localStorage.setItem("cwb_loyverse_token", data.loyverseToken); } catch {}
+            setLoyverseToken(data.loyverseToken);
           }
           const extD: any = data.extendedData || {};
           const cache = (data.team || []).map((m: any) => ({ id: m.id, name: m.name, role: m.role, pin: extD[m.id]?.pin || "" }));

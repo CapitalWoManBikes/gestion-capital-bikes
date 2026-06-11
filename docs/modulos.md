@@ -206,7 +206,13 @@ La app calcula subtotal, total y saldo. Si faltan estos datos, el avance hacia "
 
 **Botón "🖨 Imprimir recibo":** aparece cuando hay factura registrada. Abre una vista imprimible con los datos del cliente, la bicicleta, los ítems cobrados, totales y saldo. Al hacer clic en "Imprimir" se abre el diálogo del sistema.
 
-**Integración Loyverse POS:** botón "🔗 Enviar a Loyverse" crea un recibo abierto (sin pago) en el POS. Solo se envían ítems que tienen código Loyverse. Si falla, los datos locales quedan intactos. El ID del recibo queda guardado en el servicio para trazabilidad.
+**Integración Loyverse POS:** botón "🔗 Enviar a Loyverse" crea un recibo abierto (sin pago) en el POS. Solo se envían ítems que tienen código y variante Loyverse (`loyverseVariantId`). Si falla, los datos locales quedan intactos. El ID del recibo queda guardado en el servicio para trazabilidad.
+
+Notas de conexión:
+- La app consulta Loyverse por el proxy interno `/api/loyverse/...`; no se llama directo a `https://api.loyverse.com` desde el navegador.
+- En desarrollo local, Vite redirige `/api` hacia el hosting de producción para que el proxy exista también en `localhost`.
+- El botón "Probar conexión" valida una respuesta JSON real del catálogo. Si el token, proxy o servidor falla, muestra el error; no lo trata como producto no encontrado.
+- Si un ítem viejo solo tiene `loyverseItemId` y no `loyverseVariantId`, debe volver a buscarse por código antes de enviarlo a Loyverse.
 
 ### Estado de pago y entrega
 

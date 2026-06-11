@@ -185,6 +185,9 @@ Si ayudas con la app interna, recuerda:
 - Loyverse debe usarse por proxy interno `/api/loyverse/...`, no con llamadas directas a `https://api.loyverse.com`, porque eso causa CORS.
 - Productos, repuestos y servicios de factura deben venir de Loyverse cuando el flujo exige sincronización.
 - El precio base de Loyverse no se debe editar manualmente; los cambios comerciales se hacen con porcentaje de descuento.
+- Para enviar recibos a Loyverse, cada línea debe conservar `loyverseVariantId`; si un ítem antiguo solo tiene `loyverseItemId`, se debe volver a buscar por código antes de sincronizar.
+- La prueba de conexión debe validar respuesta JSON real del proxy. Un SKU no encontrado no debe ocultar errores de token, proxy o servidor.
+- En desarrollo local, Vite puede redirigir `/api` al hosting para probar el proxy sin llamar directo a Loyverse desde el navegador.
 - Para marcar una bici como Lista para recoger debe existir factura final y checklist de proceso completo, excepto entrega confirmada.
 - Para entregar una bici se requieren chequeos finales de seguridad, firma/nombre del cliente y aceptación de entrega.
 - Borrar servicios requiere clave de admin.

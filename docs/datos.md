@@ -112,7 +112,7 @@ interface QuotedPart {
   quantity: number;
   unitPrice: number;
   loyverseItemId?: string;     // ID del item en Loyverse (si fue verificado con API)
-  loyverseVariantId?: string;
+  loyverseVariantId?: string;  // ID de la variante. Requerido para enviar recibos a Loyverse
 }
 ```
 
@@ -127,7 +127,7 @@ interface ServiceLineItem {
   type: "repuesto" | "mano_obra" | "servicio";
   sku?: string;
   loyverseItemId?: string;     // ID del item en Loyverse
-  loyverseVariantId?: string;
+  loyverseVariantId?: string;  // ID de la variante. Requerido para enviar recibos a Loyverse
 }
 ```
 
@@ -155,6 +155,13 @@ interface ServiceBilling {
 - `quotedParts` → estimado/cotización de repuestos a cambiar. Visible al cliente en el link de seguimiento.
 - `finalBilling.parts` → repuestos realmente usados para factura/cobro. Obligatorios para cerrar servicio.
 - Si el `serviceType` contiene "Mant" (mantenimiento), al agregar repuestos usados se aplica automáticamente **20% de descuento** en el precio del repuesto. Este descuento NO aplica a mano de obra o servicios.
+
+**Loyverse:**
+- Las llamadas del navegador deben usar siempre el proxy interno `/api/loyverse/...`.
+- La búsqueda por código trae nombre, precio base, `loyverseItemId` y `loyverseVariantId`.
+- Para enviar un recibo a Loyverse, cada línea enviada debe tener `loyverseVariantId`; las líneas antiguas que solo tengan item deben volver a buscarse por código.
+- Un SKU no encontrado es distinto de un error de conexión/token/proxy. La UI debe mostrar el error real cuando Loyverse no responde correctamente.
+- En desarrollo local, Vite redirige `/api` hacia `https://capital-bikes.web.app` para evitar que `/api/loyverse` devuelva el HTML de la app.
 
 ### Fases internas del taller (`WORKSHOP_PHASES`)
 
