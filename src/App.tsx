@@ -7311,6 +7311,40 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
                   )}
                 </div>
               </div>
+              {(s.quotedParts || []).length > 0 && (
+                <div style={{ marginTop: 10, background: "#fff", border: "1.2px solid #b7dfba", borderRadius: 9, padding: 10 }}>
+                  <div className="sk-mono" style={{ fontSize: 9, color: "#2e7d32", letterSpacing: 1, marginBottom: 6 }}>
+                    REPUESTOS DEL SERVICIO · MARCAR INSTALADOS
+                  </div>
+                  {(s.quotedParts || []).map(p => {
+                    const baseUnit = p.originalUnitPrice ?? p.unitPrice;
+                    const discount = clampDiscount(p.discountPercent);
+                    const finalUnit = discount ? discountedUnitPrice({ unitPrice: baseUnit, originalUnitPrice: baseUnit, discountPercent: discount }) : p.unitPrice;
+                    return (
+                      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "5px 0", borderTop: "1px dashed #b7dfba", flexWrap: "wrap" as const }}>
+                        {p.sku && <span className="sk-mono" style={{ fontSize: 10, background: "rgba(76,175,80,.10)", color: "#2e7d32", padding: "1px 6px", borderRadius: 4, flexShrink: 0 }}>{p.sku}</span>}
+                        {p.loyverseItemId && <span style={{ fontSize: 10, color: "#5cc8e8", flexShrink: 0 }} title="Código Loyverse verificado">🔗</span>}
+                        <span style={{ flex: 1, minWidth: 160 }}>{p.description}</span>
+                        <span className="sk-mono" style={{ fontSize: 10, color: "#2e7d32", flexShrink: 0 }}>
+                          ×{p.quantity}{p.unitPrice > 0 ? ` · ${discount ? `${discount}% · ` : ""}${money(p.quantity * finalUnit)}` : ""}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleQuotedPartInstalled(s, p)}
+                          className={"action" + (p.installed ? " ink" : "")}
+                          style={{ fontSize: 10, padding: "2px 8px", color: p.installed ? "#fff" : "#7a5500", borderColor: p.installed ? "#2e7d32" : "#e8a020", background: p.installed ? "#2e7d32" : "#fff9c4", flexShrink: 0 }}
+                          title={p.installed ? "Quitar de instalados y de la factura final" : "Marcar instalado y agregar a factura final"}
+                        >
+                          {p.installed ? "Instalado" : "Marcar instalado"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: 10, color: "#388e3c", marginTop: 5 }}>
+                    Si se instaló después de cerrar el mantenimiento, márcalo aquí para que pase a la factura final.
+                  </div>
+                </div>
+              )}
               {showBilling[s.id] && canEditBillingForService(s) && (() => {
                 const draft = getBillingDraft(s);
                 const fi: React.CSSProperties = { width: "100%", padding: "6px 8px", borderRadius: 6, border: "1.2px solid var(--line)", background: "var(--paper)", color: "var(--ink)", fontSize: 11, fontFamily: "inherit", boxSizing: "border-box" as const };

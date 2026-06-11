@@ -175,6 +175,7 @@ Sección visible en cada tarjeta de servicio activo, antes y durante el trabajo:
 - El botón 🔍 busca el código en Loyverse y auto-completa nombre y precio
 - Los repuestos cotizados aparecen en el **link de seguimiento del cliente** para que vea el estimado
 - Son independientes de los repuestos usados finales — no afectan la factura hasta que se confirmen
+- Si el servicio ya está en **Lista para recoger**, todavía se pueden marcar repuestos cotizados como instalados desde la tarjeta verde; al hacerlo pasan a la factura final.
 
 ### Permisos por rol
 
