@@ -158,7 +158,7 @@ interface ServiceBilling {
 
 **Loyverse:**
 - Las llamadas del navegador deben usar siempre el proxy interno `/api/loyverse/...`.
-- La búsqueda por código trae nombre, precio base, `loyverseItemId` y `loyverseVariantId`.
+- La búsqueda por código trae nombre, precio base, `loyverseItemId` y `loyverseVariantId`; acepta SKU/barcode exacto y códigos al inicio del nombre o `handle` de Loyverse, como `CAJ001 - ...`.
 - Para enviar un recibo a Loyverse, cada línea enviada debe tener `loyverseVariantId`; las líneas antiguas que solo tengan item deben volver a buscarse por código.
 - Un SKU no encontrado es distinto de un error de conexión/token/proxy. La UI debe mostrar el error real cuando Loyverse no responde correctamente.
 - En desarrollo local, Vite redirige `/api` hacia `https://capital-bikes.web.app` para evitar que `/api/loyverse` devuelva el HTML de la app.

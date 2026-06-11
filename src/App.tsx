@@ -1035,12 +1035,19 @@ async function testLoyverseConnection(token: string): Promise<{ success: true; c
 
 async function lookupLoyverseSKU(sku: string, token: string): Promise<LoyverseLookupResult | null> {
   const normalized = sku.trim().toLowerCase();
+  const matchesCode = (value: unknown) => {
+    const text = String(value || "").trim().toLowerCase();
+    if (!text) return false;
+    if (text === normalized) return true;
+    if (!text.startsWith(normalized)) return false;
+    const next = text.charAt(normalized.length);
+    return !next || /[\s\-_./|:]/.test(next);
+  };
 
   const findInItems = (items: any[]) => {
     for (const item of items) {
       // REF a nivel de item (reference_id, reference, handle)
-      const itemRef = (item.reference_id || item.reference || item.handle || item.sku || "").trim().toLowerCase();
-      if (itemRef && itemRef === normalized) {
+      if ([item.reference_id, item.reference, item.handle, item.sku, item.item_name, item.name].some(matchesCode)) {
         const variant = (item.variants || [])[0];
         return {
           name: item.item_name || item.name || "",
@@ -1051,11 +1058,7 @@ async function lookupLoyverseSKU(sku: string, token: string): Promise<LoyverseLo
       }
       // REF / SKU / barcode a nivel de variante
       const variant = (item.variants || []).find((v: any) =>
-        v.reference_id?.trim().toLowerCase() === normalized ||
-        v.sku?.trim().toLowerCase() === normalized ||
-        v.barcode?.trim().toLowerCase() === normalized ||
-        v.variant_id?.trim().toLowerCase() === normalized ||
-        v.id?.trim().toLowerCase() === normalized
+        [v.reference_id, v.sku, v.barcode, v.variant_id, v.id, v.name, v.option1_value, v.option2_value, v.option3_value].some(matchesCode)
       );
       if (variant) {
         return {
