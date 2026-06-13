@@ -2,6 +2,8 @@
 
 Esta guía explica el funcionamiento de cada módulo del sistema desde el punto de vista operativo y técnico.
 
+Nota de lenguaje: la operación se maneja como prestación de servicios. En textos visibles se debe evitar lenguaje laboral como "turno", "nómina", "salario", "sueldo", "jornada", "empleado" o "trabajador"; usar "servicio", "registro de servicio", "valor hora", "referencia de pago", "periodo de pago" y "colaborador/prestador" según corresponda.
+
 ---
 
 ## Índice
@@ -11,7 +13,7 @@ Esta guía explica el funcionamiento de cada módulo del sistema desde el punto 
 3. [Módulo de Servicios](#3-módulo-de-servicios)
 4. [Calendario](#4-calendario)
 5. [Tareas](#5-tareas)
-6. [Inicio Día y Registros](#6-inicio-día-y-registros)
+6. [Servicio y Registros](#6-servicio-y-registros)
 7. [Almuerzo](#7-almuerzo)
 8. [Perfil del equipo](#8-perfil-del-equipo)
 9. [Dashboard de colaborador](#9-dashboard-de-colaborador)
@@ -47,7 +49,7 @@ Al abrir la app, el sistema espera a que Firestore cargue los datos antes de hab
 
 Vista general del estado del equipo en tiempo real, con cuatro subvistas:
 
-- **Lista** — tarjetas por colaborador con estado de inicio día y almuerzo
+- **Lista** — tarjetas por colaborador con estado de servicio iniciado y almuerzo
 - **Mapa** — distribución visual del equipo en el taller
 - **Kanban** — tablero de flujo (experimental)
 - **Timeline** — línea de tiempo de actividad del día
@@ -56,8 +58,8 @@ Vista general del estado del equipo en tiempo real, con cuatro subvistas:
 
 En la parte superior del panel de administración aparecen banners contextuales:
 
-- **Banner morado** ("día iniciado") — cuando uno o más colaboradores iniciaron su día operativo
-- **Banner naranja** ("en almuerzo") — cuando alguien con día iniciado ha iniciado almuerzo
+- **Banner morado** ("servicio iniciado") — cuando uno o más colaboradores iniciaron su servicio
+- **Banner naranja** ("en almuerzo") — cuando alguien con servicio iniciado ha iniciado almuerzo
 
 Los nombres son dinámicos: se leen del estado real del equipo, no están hardcodeados.
 
@@ -261,21 +263,21 @@ Las tareas completadas se marcan con checkbox y quedan en la lista para referenc
 
 ---
 
-## 6. Inicio Día y Registros
+## 6. Servicio y Registros
 
 **Componente:** `ShiftSection`
 
-Cada colaborador puede registrar **inicio** y **cierre** de su día operativo. El sistema muestra:
+Cada colaborador puede registrar **inicio** y **cierre** de su servicio. El sistema muestra:
 
-- Estado actual (día iniciado / día sin iniciar)
-- Tiempo transcurrido del día operativo (timer en tiempo real, sin NaN)
+- Estado actual (servicio iniciado / servicio sin iniciar)
+- Tiempo transcurrido del servicio (timer en tiempo real, sin NaN)
 - Historial real del día
-- Resumen mensual por colaborador con totales netos por corte
+- Resumen mensual por colaborador con totales netos por periodo
 - Editor Admin por día para corregir inicio, cierre, tiempo calculado y almuerzo
-- Confirmación Admin de cortes de pago
+- Confirmación Admin de periodos de pago
 
-El estado de inicio día se guarda en Firestore y se sincroniza entre dispositivos.
-El tiempo neto se recalcula desde inicio/cierre menos el almuerzo registrado. Ejemplo: 9:00 a 18:00 con 90 minutos de almuerzo queda en 7h 30m netos. El valor hora se toma de cada colaborador (`extendedData[memberId].hourlyRate`), no de un valor global. Si Admin cambia un registro o almuerzo que ya estaba dentro de un corte confirmado, esa confirmación queda en estado `requiere_revision` hasta reconfirmarla.
+El estado de servicio iniciado se guarda en Firestore y se sincroniza entre dispositivos.
+El tiempo neto se recalcula desde inicio/cierre menos el almuerzo registrado. Ejemplo: 9:00 a 18:00 con 90 minutos de almuerzo queda en 7h 30m netos. El valor hora se toma de cada colaborador (`extendedData[memberId].hourlyRate`), no de un valor global. Si Admin cambia un registro o almuerzo que ya estaba dentro de un periodo confirmado, esa confirmación queda en estado `requiere_revision` hasta reconfirmarla.
 
 ---
 
@@ -283,7 +285,7 @@ El tiempo neto se recalcula desde inicio/cierre menos el almuerzo registrado. Ej
 
 **Componente:** `LunchSection`
 
-Control del estado de pausa de almuerzo. Solo disponible para colaboradores que tienen **día iniciado**.
+Control del estado de pausa de almuerzo. Solo disponible para colaboradores que tienen **servicio iniciado**.
 
 Al iniciar almuerzo:
 - El estado del colaborador cambia visualmente (tarjeta naranja)
@@ -303,7 +305,7 @@ Gestión de información de cada colaborador:
 | Nombre | Nombre completo |
 | Rol | Mecánico, Tienda/Caja, Administración, etc. |
 | Referencia de pago | Referencia interna |
-| Valor hora nómina | Valor por hora individual usado en los cortes |
+| Valor hora servicio | Valor por hora individual usado en los periodos |
 | Dirección | Domicilio |
 | Documento | Cédula |
 | EPS | Entidad de salud |
@@ -334,8 +336,8 @@ Vista personalizada que ven los colaboradores al iniciar sesión con su PIN. Tie
 
 ### Pestaña Inicio
 
-- **Tarjeta de inicio día** — botón de inicio/cierre, estado visual, botón de almuerzo y contador de almuerzo activo
-- **Mi resumen de pagos** — tiempo neto del mes, almuerzo acumulado y cortes confirmados por Admin
+- **Tarjeta de servicio** — botón de inicio/cierre, estado visual, botón de almuerzo y contador de almuerzo activo
+- **Mi resumen de pagos** — tiempo neto del mes, almuerzo acumulado y periodos confirmados por Admin
 - **Mis tareas hoy** — tareas del día asignadas a este colaborador, con checkbox
 - **Servicios hoy** — bicis asignadas con fecha de hoy
 - **Próximos agendamientos** — citas futuras asignadas

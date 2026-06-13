@@ -108,7 +108,7 @@ La contraseña se almacena en localStorage bajo la clave `cwb_admin_pwd` y en Fi
 1. Ir a **Dashboard → Perfil del equipo**
 2. Hacer clic en **"+ Añadir miembro"**
 3. Ingresar nombre y rol
-4. Ir al perfil del colaborador para completar datos (salario, documento, PIN, etc.)
+4. Ir al perfil del colaborador para completar datos (referencia de pago, documento, PIN, etc.)
 
 ### Configurar PIN de un colaborador
 

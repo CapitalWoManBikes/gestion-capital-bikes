@@ -256,7 +256,7 @@ Documento: data
   "extendedData": {
     "[memberId]": {
       "salario": "string // referencia interna de pago",
-      "hourlyRate": "string // valor hora individual usado para cortes de nómina",
+      "hourlyRate": "string // valor hora individual usado para periodos de pago por servicio",
       "direccion": "string",
       "documento": "string",
       "eps": "string",
@@ -297,11 +297,11 @@ Documento: data
 | `cwb_team` | Miembros del equipo | Cuando cambia el equipo |
 | `cwb_ext` | `extendedData` completo | Cuando cambia algún perfil |
 | `cwb_emp_cache` | `[{id, name, role, pin}]` | Al guardar extendedData o cargar Firestore |
-| `cwb_shift` | Estado de inicio día | Cuando cambia el registro de inicio/cierre |
+| `cwb_shift` | Estado de servicio iniciado | Cuando cambia el registro de inicio/cierre |
 | `cwb_emp_lunch` | Estado de almuerzo por colaborador | Cuando cambia el almuerzo |
 | `cwb_attendance_records` | Entradas/salidas del equipo | Al fichar, corregir o crear registros manuales |
 | `cwb_lunch_records` | Registros de almuerzo | Al iniciar, cerrar o corregir almuerzos |
-| `cwb_payroll_confirmations` | Confirmaciones de cortes de pago | Cuando Admin confirma o reabre un corte por ajustes |
+| `cwb_payroll_confirmations` | Confirmaciones de periodos de pago | Cuando Admin confirma o reabre un periodo por ajustes |
 | `cwb_admin_pwd` | Contraseña del admin (hash) | Al cambiar la contraseña |
 | `cwb_session` | (sessionStorage) Sesión actual | Al hacer login/logout |
 

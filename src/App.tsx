@@ -362,7 +362,7 @@ const dateLabelEs = (date: string): string => {
   return `${d.getDate()} DE ${MONTH_NAMES_ES[d.getMonth()]}`;
 };
 const dayLabelEs = (date: string): string => DAY_NAMES_ES[parseLocalDateTime(date, "12:00").getDay()];
-const payrollPeriodLabel = (period: PayrollPeriod) => period === "q1" ? "Corte 1" : "Corte 2";
+const payrollPeriodLabel = (period: PayrollPeriod) => period === "q1" ? "Periodo 1" : "Periodo 2";
 const payrollPeriodRange = (monthKey: string, period: PayrollPeriod) => {
   const dates = monthDates(monthKey);
   const periodDates = dates.filter(d => period === "q1" ? Number(d.slice(8, 10)) <= 15 : Number(d.slice(8, 10)) > 15);
@@ -1742,7 +1742,7 @@ function EditMemberModal({ person, extData = {}, onClose, onSave, isPinAvailable
               <Field label="DIRECCIÓN" value={direccion} onChange={setDireccion} placeholder="Calle, número, ciudad" />
               <Field label="EPS / SEGURO MÉDICO" value={eps} onChange={setEps} placeholder="Nombre de la EPS" />
               <Field label="REFERENCIA DE PAGO" value={salario} onChange={setSalario} placeholder="1.850" />
-              <Field label="VALOR HORA NÓMINA" value={hourlyRate} onChange={setHourlyRate} placeholder="6000" />
+              <Field label="VALOR HORA SERVICIO" value={hourlyRate} onChange={setHourlyRate} placeholder="6000" />
               <Field label="TIEMPO REFERENCIA SEMANAL" value={horasSemana} onChange={setHorasSemana} placeholder="40" />
               <hr className="sk-hr dashed" />
               <Field label="PIN DE ACCESO COLABORADOR (4 dígitos)" value={employeePin} onChange={setEmployeePin} placeholder="1234" />
@@ -1905,8 +1905,8 @@ function DashLista({ lunchState, shiftState, team = INITIAL_TEAM, onRemove }) {
                     <div className="text-lg" style={{ fontWeight: 700 }}>{p.name} · {p.role}</div>
                     <StatusPill state={pStatus} />
                     {inShift && isLunch && <div className="sk-mono text-xs muted">en almuerzo · no molestar</div>}
-                    {inShift && !isLunch && <div className="sk-mono text-xs muted">día iniciado</div>}
-                    {!inShift && <div className="sk-mono text-xs muted">día sin iniciar</div>}
+                    {inShift && !isLunch && <div className="sk-mono text-xs muted">servicio iniciado</div>}
+                    {!inShift && <div className="sk-mono text-xs muted">servicio sin iniciar</div>}
                   </div>
                 </div>
                 <div className="stack" style={{ alignItems: "flex-end", gap: 4 }}>
@@ -1936,7 +1936,7 @@ function DashLista({ lunchState, shiftState, team = INITIAL_TEAM, onRemove }) {
           <div className="sk-title text-xl">Resumen hoy</div>
           <hr className="sk-hr wavy" />
           <div className="stack" style={{ gap: 8 }}>
-            <div className="list-row"><span>Día iniciado</span><span className="sk-mono">{team.filter(p => shiftState[p.id]).length}/{team.length}</span></div>
+            <div className="list-row"><span>Servicio iniciado</span><span className="sk-mono">{team.filter(p => shiftState[p.id]).length}/{team.length}</span></div>
             <div className="list-row"><span>En almuerzo</span><span className="sk-mono">{lunchState && shiftState.s ? 1 : 0}</span></div>
             <div className="list-row"><span>Tareas cerradas</span><span className="sk-mono">{done}/{tasks.length}</span></div>
             <div className="list-row"><span>Caja · hoy</span><span className="sk-mono">€ 842</span></div>
@@ -1955,7 +1955,7 @@ function DashLista({ lunchState, shiftState, team = INITIAL_TEAM, onRemove }) {
                 </div>
               );
             })}
-            {team.filter(p => shiftState[p.id]).length === 0 && <div className="text-sm muted">Nadie ha iniciado el día hoy</div>}
+            {team.filter(p => shiftState[p.id]).length === 0 && <div className="text-sm muted">Nadie ha iniciado servicio hoy</div>}
             <div className="text-sm"><span className="chip dash">·</span> 1:1 Sergio — jueves 10:00</div>
           </div>
         </div>
@@ -2274,7 +2274,7 @@ function BusinessDashboard({ view, services, tasks, appointments, memberships, t
           </div>
         </div>
         <div className="stack gap-3">
-          <div className="sk-box p-4"><div className="sk-title text-xl">Operación hoy</div><hr className="sk-hr wavy" /><div className="list-row"><span>Servicios hoy</span><span className="sk-mono">{todayServices.length}</span></div><div className="list-row"><span>Agendamientos hoy</span><span className="sk-mono">{todayAppointments.length}</span></div><div className="list-row"><span>Tareas pendientes</span><span className="sk-mono">{todayPendingTasks.length}</span></div><div className="list-row"><span>Día iniciado</span><span className="sk-mono">{inShift.length}/{team.length}</span></div><div className="list-row"><span>En almuerzo</span><span className="sk-mono">{inLunch.length}</span></div></div>
+          <div className="sk-box p-4"><div className="sk-title text-xl">Operación hoy</div><hr className="sk-hr wavy" /><div className="list-row"><span>Servicios hoy</span><span className="sk-mono">{todayServices.length}</span></div><div className="list-row"><span>Agendamientos hoy</span><span className="sk-mono">{todayAppointments.length}</span></div><div className="list-row"><span>Tareas pendientes</span><span className="sk-mono">{todayPendingTasks.length}</span></div><div className="list-row"><span>Servicio iniciado</span><span className="sk-mono">{inShift.length}/{team.length}</span></div><div className="list-row"><span>En almuerzo</span><span className="sk-mono">{inLunch.length}</span></div></div>
           <div className="sk-box p-4">
             <div className="row between" style={{ marginBottom: 8 }}>
               <div className="sk-title text-xl">Productividad semanal</div>
@@ -2337,7 +2337,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
           <div className="sk-title text-2xl" style={{ marginTop: 4 }}>Estado del equipo en tiempo real</div>
         </div>
         <div className="row gap-2">
-          <span className="chip accent"><span className="dot" style={{ background: "#fff" }} />{shiftCount} con día iniciado</span>
+          <span className="chip accent"><span className="dot" style={{ background: "#fff" }} />{shiftCount} con servicio iniciado</span>
           <span className="chip lunch"><span className="dot" style={{ background: "#fff" }} />{lunchCount} en almuerzo</span>
           <span className="chip">{fmtMinutes(todayMinutes)} hoy</span>
         </div>
@@ -2366,7 +2366,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
                       <Av p={p} size="lg" state={isLunch ? "lunch" : isIn ? "busy" : null} />
                       <div className="stack" style={{ gap: 3, minWidth: 0 }}>
                         <div className="text-sm" style={{ fontWeight: 800 }}>{p.name}</div>
-                        <div className="sk-mono text-xs muted">{p.role || "Equipo"} - {isIn ? "día iniciado" : "día sin iniciar"}</div>
+                        <div className="sk-mono text-xs muted">{p.role || "Equipo"} - {isIn ? "servicio iniciado" : "servicio sin iniciar"}</div>
                       </div>
                     </div>
                     <div className="row gap-2" style={{ flexShrink: 0 }}>
@@ -2462,7 +2462,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
           </div>
 
           <div className="sk-box p-4">
-            <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>DISPONIBLES CON DÍA INICIADO</div>
+            <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>DISPONIBLES CON SERVICIO INICIADO</div>
             {available.length ? available.map(p => (
               <div key={p.id} className="row between" style={{ padding: "8px 0", borderBottom: "1px dashed var(--line)" }}>
                 <div className="row gap-2">
@@ -2472,12 +2472,12 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
                 <button className="action lunch-btn" onClick={() => setLunchFor(p.id, true)}>Enviar</button>
               </div>
             )) : (
-              <div className="text-sm sub">No hay personas disponibles con día iniciado.</div>
+              <div className="text-sm sub">No hay personas disponibles con servicio iniciado.</div>
             )}
           </div>
 
           <div className="sk-box p-4">
-            <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>DÍA SIN INICIAR</div>
+            <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 10 }}>SERVICIO SIN INICIAR</div>
             {offShift.length ? offShift.map(p => (
               <div key={p.id} className="row between" style={{ padding: "6px 0" }}>
                 <div className="row gap-2">
@@ -2487,7 +2487,7 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
                 <StatusPill state="off" />
               </div>
             )) : (
-              <div className="text-sm sub">Todo el equipo tiene día iniciado.</div>
+              <div className="text-sm sub">Todo el equipo tiene servicio iniciado.</div>
             )}
           </div>
         </div>
@@ -2653,7 +2653,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
   const confirmPeriod = (period: PayrollPeriod) => {
     if (!selectedTimesheetPerson || !onConfirmPayroll) return;
     if (!hourlyRate) {
-      alert("Define primero el valor de referencia para confirmar el corte.");
+      alert("Define primero el valor de referencia para confirmar el periodo.");
       return;
     }
     const { fromDate, toDate } = payrollPeriodRange(timesheetMonth, period);
@@ -2700,7 +2700,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
 
   return (
     <div className="fade-in" style={{ padding: 18 }}>
-      <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 16 }}>INICIO DÍA · REGISTROS DE ACTIVIDAD</div>
+      <div className="sk-mono text-xs tracked muted" style={{ marginBottom: 16 }}>SERVICIO · REGISTROS DE ACTIVIDAD</div>
       <div className="shift-grid" style={{ display: "grid", gridTemplateColumns: "1fr 240px", gap: 14 }}>
         <div className="stack gap-3">
 
@@ -2730,7 +2730,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
             </div>
             <div className="payroll-mobile-panel">
               <div style={{ marginBottom: 8 }}>
-                <div className="sk-mono text-xs tracked muted">Nómina móvil</div>
+                <div className="sk-mono text-xs tracked muted">Registro de pagos</div>
                 <div className="sk-title text-xl">{selectedTimesheetPerson?.name || "Equipo"} · {timesheetMonthLabel}</div>
               </div>
               <div className="payroll-stat-grid">
@@ -2944,7 +2944,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                           <button className="action lunch-btn" style={{ fontSize: 11 }} onClick={createManualLunch}>Crear almuerzo</button>
                           <input className="field-input" value={manualObservation} onChange={e => setManualObservation(e.target.value)} placeholder="Nota del ajuste" style={{ minWidth: 190, flex: 1, padding: "5px 8px" }} />
                         </div>
-                        <div className="text-xs muted" style={{ marginTop: 8 }}>Si una quincena ya estaba confirmada, cualquier ajuste la marca como pendiente de revision para reconfirmarla.</div>
+                        <div className="text-xs muted" style={{ marginTop: 8 }}>Si un periodo ya estaba confirmado, cualquier ajuste lo marca como pendiente de revisión para reconfirmarlo.</div>
                       </div>
                     </div>
                   </div>
@@ -2971,7 +2971,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                     <div className="stack" style={{ gap: 0 }}>
                       <span className="text-sm" style={{ fontWeight: 700 }}>{p.name}</span>
                       <span className="sk-mono text-xs muted">
-                        {isIn ? (isOnLunch ? "almuerzo" : `${fmtTime(getElapsed(shiftState[p.id]))} registradas`) : "día sin iniciar"}
+                        {isIn ? (isOnLunch ? "almuerzo" : `${fmtTime(getElapsed(shiftState[p.id]))} registradas`) : "servicio sin iniciar"}
                       </span>
                     </div>
                   </div>
@@ -2982,11 +2982,11 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                   <div style={{ marginTop: 8 }}>
                     {!isIn ? (
                       <button className="action accent" style={{ width: "100%", fontSize: 12 }} onClick={() => onStartAttendance ? onStartAttendance(p) : setShiftState(s => ({ ...s, [p.id]: new Date().toISOString() }))}>
-                        <Icon d={I.in} size={14} /> INICIAR DÍA
+                        <Icon d={I.in} size={14} /> INICIAR SERVICIO
                       </button>
                     ) : (
                       <button className="action ink" style={{ width: "100%", fontSize: 12 }} onClick={() => onCloseAttendance ? onCloseAttendance(p) : setShiftState(s => ({ ...s, [p.id]: false }))}>
-                        <Icon d={I.out} size={14} /> CERRAR DÍA
+                        <Icon d={I.out} size={14} /> CERRAR SERVICIO
                       </button>
                     )}
                   </div>
@@ -3004,7 +3004,7 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
             </div>
             <hr className="sk-hr dashed" />
             {team.filter(p => shiftState[p.id]).length === 0 && todayRecords.length === 0 && (
-              <div className="sk-mono text-xs muted" style={{ padding: "12px 0" }}>— Nadie ha iniciado el día hoy —</div>
+              <div className="sk-mono text-xs muted" style={{ padding: "12px 0" }}>— Nadie ha iniciado servicio hoy —</div>
             )}
             {todayRecords.filter(r => r.status !== "abierto").map(r => {
               const p = team.find(m => m.id === r.employeeId) || { id: r.employeeId, name: r.employeeName || r.employeeId };
@@ -4541,7 +4541,7 @@ const NAV = [
   { id: "clientes",      label: "Clientes",         icon: "people" },
   { id: "membresias",    label: "Mensualidades",    icon: "coin"   },
   { id: "lunch",         label: "Almuerzo",         icon: "lunch"  },
-  { id: "turno",         label: "Inicio día",        icon: "in"     },
+  { id: "turno",         label: "Servicio",          icon: "in"     },
   { id: "perfil",        label: "Perfil equipo",    icon: "user"   },
   { id: "tareas",        label: "Tareas",           icon: "tasks"  },
   { id: "mensajes",      label: "Mensajes",         icon: "message" },
@@ -8299,17 +8299,17 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
       )}
 
       {tab === "inicio" && <div className="employee-home" style={{ flex: 1, overflowY: "auto", padding: "16px 16px 80px", maxWidth: 640, margin: "0 auto", width: "100%", boxSizing: "border-box" as const }}>
-        {/* Inicio día */}
+        {/* Registro de servicio */}
         <div className={`sk-box capital-status-card employee-hero-card ${isLunch ? "state-lunch" : isIn ? "state-in" : "state-off"}`} style={{ borderStyle: isIn ? "solid" : "dashed", borderRadius: 14, padding: 22, textAlign: "center", marginBottom: 18 }}>
           <div className="employee-hero-top">
             <div className={`employee-status-orb ${isLunch ? "lunch" : isIn ? "active" : ""}`} aria-hidden="true"><span /></div>
             <div style={{ minWidth: 0 }}>
-              <div className="sk-mono text-xs tracked muted">Mi turno de hoy</div>
+              <div className="sk-mono text-xs tracked muted">Mis horas de hoy</div>
               <div style={{ fontWeight: 800, fontSize: 21, lineHeight: 1.05 }}>
-                {isLunch ? "En almuerzo" : isIn ? "Día iniciado" : "Día sin iniciar"}
+                {isLunch ? "En almuerzo" : isIn ? "Servicio iniciado" : "Servicio sin iniciar"}
               </div>
               <div className="sk-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 3 }}>
-                {isLunch ? "Pausa activa, no molestar" : isIn ? "Tu tiempo se está registrando" : "Marca tu entrada para iniciar nómina"}
+                {isLunch ? "Pausa activa, no molestar" : isIn ? "Tu tiempo se está registrando" : "Marca tu entrada para iniciar tu servicio"}
               </div>
             </div>
           </div>
@@ -8346,7 +8346,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
                 }
               }}
             >
-              {isIn ? "Cerrar día" : "Iniciar día"}
+              {isIn ? "Cerrar servicio" : "Iniciar servicio"}
             </button>
             {isIn && (
               <button
@@ -8416,7 +8416,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
               </div>
             </div>
           )) : (
-            <div className="placeholder" style={{ borderRadius: 10, padding: 14, textAlign: "center", fontSize: 12 }}>Admin aun no ha confirmado cortes para este mes.</div>
+            <div className="placeholder" style={{ borderRadius: 10, padding: 14, textAlign: "center", fontSize: 12 }}>Admin aun no ha confirmado periodos para este mes.</div>
           )}
         </div>
 
@@ -9484,8 +9484,8 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [appointments]);
 
-  const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", clientes: "Clientes", membresias: "Mensualidades", lunch: "Almuerzo / No molestar", turno: "Inicio día", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", mensajes: "Agente de mensajes", cal: "Calendario", ops: "1:1 y Onboarding", integraciones: "Integraciones" };
-  const breadcrumbs: Record<string, string> = { dash: "HOY · " + _fmtDate(new Date()), servicios: "BICICLETAS · SERVICIO", clientes: "CLIENTES · BICICLETAS · HISTORIAL", membresias: "PLANES · CLIENTES", lunch: "FEATURE · NO MOLESTAR", turno: "INICIO DÍA · HOY", perfil: "EQUIPO › PERFIL", tareas: "TAREAS · " + _fmtDate(new Date()), mensajes: "WHATSAPP · CAJA · TALLER · REDES", cal: "CALENDARIO · SEMANA ACTUAL", ops: "PLANTILLAS", integraciones: "APP · CONEXIONES EXTERNAS" };
+  const titles: Record<string, string> = { dash: "Mi equipo", servicios: "Servicios", clientes: "Clientes", membresias: "Mensualidades", lunch: "Almuerzo / No molestar", turno: "Servicio", perfil: "Perfil del equipo", tareas: "Tareas y proyectos", mensajes: "Agente de mensajes", cal: "Calendario", ops: "1:1 y Onboarding", integraciones: "Integraciones" };
+  const breadcrumbs: Record<string, string> = { dash: "HOY · " + _fmtDate(new Date()), servicios: "BICICLETAS · SERVICIO", clientes: "CLIENTES · BICICLETAS · HISTORIAL", membresias: "PLANES · CLIENTES", lunch: "FEATURE · NO MOLESTAR", turno: "SERVICIO · HOY", perfil: "EQUIPO › PERFIL", tareas: "TAREAS · " + _fmtDate(new Date()), mensajes: "WHATSAPP · CAJA · TALLER · REDES", cal: "CALENDARIO · SEMANA ACTUAL", ops: "PLANTILLAS", integraciones: "APP · CONEXIONES EXTERNAS" };
 
   const trackParam = new URLSearchParams(window.location.search).get("track");
   if (trackParam) {
@@ -9555,12 +9555,12 @@ export default function App() {
               <button className="action" style={{ fontSize: 11, padding: "1px 8px", lineHeight: 1.4 }} onClick={() => setShowModal(true)}>+ añadir</button>
             </div>
             {team.map(p => (
-              <div key={p.id} className="nav-item" onClick={() => setSection("perfil")} title={`${p.name} · ${shift[p.id] ? (empLunch[p.id] ? "almuerzo" : "día iniciado") : "sin iniciar"}`}>
+              <div key={p.id} className="nav-item" onClick={() => setSection("perfil")} title={`${p.name} · ${shift[p.id] ? (empLunch[p.id] ? "almuerzo" : "servicio iniciado") : "sin iniciar"}`}>
                 <Av p={p} size="xs" state={shift[p.id] ? (empLunch[p.id] ? "lunch" : "busy") : null} />
                 <div className="stack nav-member-meta" style={{ gap: 0 }}>
                   <span style={{ fontSize: 13 }}>{p.name}</span>
                   <span className="sk-mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>
-                    {!shift[p.id] ? "sin iniciar" : empLunch[p.id] ? "almuerzo" : "día iniciado"}
+                    {!shift[p.id] ? "sin iniciar" : empLunch[p.id] ? "almuerzo" : "servicio iniciado"}
                   </span>
                 </div>
                 <button className="nav-remove" onClick={e => { e.stopPropagation(); removeMember(p.id); }}
@@ -9607,8 +9607,8 @@ export default function App() {
             <div className="notif-banner in-banner">
               <Icon d={I.in} size={18} />
               <div className="sk-mono" style={{ fontSize: 12, color: "#fff" }}>
-                {(() => { const names = team.filter(p => shift[p.id]).map(p => p.name); return names.join(" y ") + (names.length === 1 ? " inició el día" : " iniciaron el día"); })()}
-                {" · "}día activo
+                {(() => { const names = team.filter(p => shift[p.id]).map(p => p.name); return names.join(" y ") + (names.length === 1 ? " inició servicio" : " iniciaron servicio"); })()}
+                {" · "}servicio activo
               </div>
             </div>
           )}
@@ -9616,7 +9616,7 @@ export default function App() {
           {/* AppBar */}
           <AppBar title={titles[section]} breadcrumb={breadcrumbs[section]}>
             {section === "dash" && <>
-              <span className="chip"><span className="dot g" />{team.filter(p => shift[p.id]).length}/{team.length} día iniciado</span>
+              <span className="chip"><span className="dot g" />{team.filter(p => shift[p.id]).length}/{team.length} servicio iniciado</span>
               {team.some(p => empLunch[p.id] && shift[p.id]) && <span className="chip lunch"><span className="dot" style={{ background: "#fff" }} />{team.filter(p => empLunch[p.id] && shift[p.id]).length} almuerzo</span>}
               <button className="action ink" onClick={() => setShowAssignTask(true)}><Icon d={I.plus} size={14} /> Añadir tarea</button>
             </>}
