@@ -674,6 +674,14 @@ function urgencyInfo(neededByDate: string | undefined): { label: string; color: 
 }
 
 const money = (value: number | undefined) => `$${(value || 0).toLocaleString("es-CO")}`;
+const formatDateTimeEs = (value?: string) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" });
+};
+const deliveryDateLabel = (s: Pick<BikeService, "deliveredAt" | "deliverySignedAt">) =>
+  formatDateTimeEs(s.deliveredAt || s.deliverySignedAt);
 const splitLines = (value: string) => value.split("\n").map(v => v.trim()).filter(Boolean);
 const INTAKE_CHECKLIST_TEMPLATE: { key: string; label: string }[] = [
   { key: "marco", label: "Marco / pintura" },
@@ -2180,15 +2188,18 @@ function BusinessDashboard({ view, services, tasks, appointments, memberships, t
       {hint && <div className="text-xs muted" style={{ marginTop: 4 }}>{hint}</div>}
     </div>
   );
-  const ServiceRow = ({ service, right }: { service: BikeService; right?: string }) => (
+  const ServiceRow = ({ service, right }: { service: BikeService; right?: string }) => {
+    const deliveredDate = deliveryDateLabel(service);
+    return (
     <div className="list-row" style={{ gap: 10 }}>
       <span style={{ minWidth: 0 }}>
         <span style={{ display: "block", fontWeight: 700, fontSize: 13 }}>{service.clientName}</span>
-        <span className="sk-mono" style={{ display: "block", fontSize: 10, color: "var(--ink-3)" }}>{serviceStatusLabel(service)} · {service.scheduledDate || service.date}</span>
+        <span className="sk-mono" style={{ display: "block", fontSize: 10, color: "var(--ink-3)" }}>{serviceStatusLabel(service)} · {service.deliveryStatus === "entregada" && deliveredDate ? `Entregada ${deliveredDate}` : (service.scheduledDate || service.date)}</span>
       </span>
       {right && <span className="sk-mono" style={{ fontSize: 11, color: "#6c1f6e", flexShrink: 0 }}>{right}</span>}
     </div>
-  );
+    );
+  };
 
   if (view === "kanban") {
     return (
@@ -4592,6 +4603,7 @@ function CustomerTrackingView({ data }: { data: any }) {
   const customerTicket = ticketSummary(data);
   const urgency = urgencyInfo(data.neededByDate);
   const completedAt: string | undefined = data.completedAt;
+  const deliveredDate = formatDateTimeEs(data.deliveredAt || data.deliverySignedAt);
   const workshopInfo = data.workshopStatus ? WORKSHOP_STATUS_LABEL[data.workshopStatus] : null;
   const daysSinceCompleted = completedAt
     ? Math.floor((Date.now() - new Date(completedAt).getTime()) / 86400000)
@@ -4613,8 +4625,16 @@ function CustomerTrackingView({ data }: { data: any }) {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: S.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px" }}>
+    <div
+      className="customer-tracking-page"
+      style={{ minHeight: "100vh", height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehaviorY: "contain", background: S.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px", boxSizing: "border-box" }}
+    >
       <style>{CSS}</style>
+      <style>{`
+        .customer-tracking-page{height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
+        @supports not (height:100dvh){.customer-tracking-page{height:100vh;}}
+        @media (max-width:768px){.customer-tracking-page{padding:16px 12px 28px!important;}}
+      `}</style>
       <div style={{ width: "100%", maxWidth: 480, background: S.card, borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 32px #0008" }}>
 
         {/* Header */}
@@ -4633,6 +4653,7 @@ function CustomerTrackingView({ data }: { data: any }) {
             <Row label="Fecha ingreso" value={data.date} />
             {data.workshopStartDate && <Row label="Inicio de trabajo" value={data.workshopStartDate} />}
             {data.neededByDate && <Row label="Fecha acordada de entrega" value={data.neededByDate} color={urgency?.color} />}
+            {data.deliveryStatus === "entregada" && deliveredDate && <Row label="Fecha entregada" value={deliveredDate} color="#4caf50" />}
             {daysInShop !== null && daysInShop >= 0 && (
               <Row label="Días en taller" value={`${daysInShop === 0 ? "Hoy" : `${daysInShop} día${daysInShop > 1 ? "s" : ""}`}`}
                 color={daysInShop > 5 ? "#e8a020" : S.muted} />
@@ -4764,7 +4785,7 @@ function CustomerTrackingView({ data }: { data: any }) {
               <div style={{ color: S.muted, fontFamily: S.mono, fontSize: 9, letterSpacing: 1, marginBottom: 6 }}>ENTREGA CONFIRMADA</div>
               <div style={{ color: "#c8a8c8", fontSize: 13, lineHeight: 1.5 }}>Recibido por: <strong>{data.deliverySignatureName}</strong></div>
               {data.deliveryAcceptanceText && <div style={{ color: "#c8a8c8", fontSize: 12, lineHeight: 1.5, marginTop: 6 }}>{data.deliveryAcceptanceText}</div>}
-              {data.deliveredAt && <div style={{ color: S.muted, fontSize: 11, marginTop: 4 }}>{new Date(data.deliveredAt).toLocaleString("es-CO")}</div>}
+              {deliveredDate && <div style={{ color: S.muted, fontSize: 11, marginTop: 4 }}>Fecha: {deliveredDate}</div>}
             </div>
           )}
 
@@ -5692,6 +5713,7 @@ function ClientesSection({ clients, services, onUpsertClient, team }: {
                     {bikeSvcs.map(s => (
                       <div key={s.id} style={{ fontSize: 11, color: "var(--ink-3)", padding: "3px 0", borderTop: "1px dashed var(--line)", marginTop: 4 }}>
                         {s.date} · {s.serviceType || "Servicio"} · {s.workshopStatus === "entregada" || s.deliveryStatus === "entregada" ? "✅ Entregada" : s.phase >= 4 ? "✅ Lista" : "🔧 En taller"}
+                        {(s.workshopStatus === "entregada" || s.deliveryStatus === "entregada") && deliveryDateLabel(s) ? ` · ${deliveryDateLabel(s)}` : ""}
                       </div>
                     ))}
                   </div>
@@ -5719,6 +5741,9 @@ function ClientesSection({ clients, services, onUpsertClient, team }: {
                       </span>
                     </div>
                     {tech && <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>🔧 {tech.name}</div>}
+                    {(s.workshopStatus === "entregada" || s.deliveryStatus === "entregada") && deliveryDateLabel(s) && (
+                      <div className="sk-mono" style={{ fontSize: 10, color: "#2e7d32", marginTop: 2 }}>Entregada: {deliveryDateLabel(s)}</div>
+                    )}
                     {s.intakeReportedIssue && <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>"{s.intakeReportedIssue}"</div>}
                   </div>
                 );
@@ -7242,6 +7267,11 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
                   Marcar entregada
                 </button>
               )}
+              {s.deliveryStatus === "entregada" && deliveryDateLabel(s) && (
+                <span className="sk-mono" style={{ width: "100%", textAlign: "right" as const, fontSize: 10, color: "#2e7d32" }}>
+                  Entregada: {deliveryDateLabel(s)}
+                </span>
+              )}
             </div>
             {s.paymentStatus === "adelanto" && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -7282,6 +7312,7 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
                   <div className="sk-mono" style={{ fontSize: 10, color: "#4caf50", marginTop: 2 }}>📥 Ingresó: {s.date}</div>
                   {ticketSummary(s).subtotal > 0 && <div className="sk-mono" style={{ fontSize: 10, color: "#2e7d32", marginTop: 2 }}>TICKET · total {money(ticketSummary(s).subtotal)} · saldo {money(ticketSummary(s).balance)}</div>}
                   {s.technicianId && team.find(p => p.id === s.technicianId) && <div className="sk-mono" style={{ fontSize: 10, color: "#4caf50", marginTop: 1 }}>🔧 {team.find(p => p.id === s.technicianId)?.name}</div>}
+                  {s.deliveryStatus === "entregada" && deliveryDateLabel(s) && <div className="sk-mono" style={{ fontSize: 10, color: "#2e7d32", marginTop: 1 }}>🏠 Entregada: {deliveryDateLabel(s)}</div>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                   <span style={{ background: "#4caf50", color: "#fff", borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>✅ Lista para recoger</span>
@@ -7295,7 +7326,11 @@ function ServiceSection({ services, onAdvancePhase, onNewService, onUpdateServic
                     </button>
                   )}
                   {s.deliveryStatus === "entregada"
-                    ? <span style={{ fontSize: 11, color: "#2e7d32", fontWeight: 600, textAlign: "right" as const }}>🏠 Entregada{s.deliverySignatureName && <span className="sk-mono" style={{ display: "block", fontSize: 9, marginTop: 2 }}>Firma conforme: {s.deliverySignatureName}</span>}</span>
+                    ? <span style={{ fontSize: 11, color: "#2e7d32", fontWeight: 600, textAlign: "right" as const }}>
+                        🏠 Entregada
+                        {deliveryDateLabel(s) && <span className="sk-mono" style={{ display: "block", fontSize: 9, marginTop: 2 }}>Fecha: {deliveryDateLabel(s)}</span>}
+                        {s.deliverySignatureName && <span className="sk-mono" style={{ display: "block", fontSize: 9, marginTop: 2 }}>Firma conforme: {s.deliverySignatureName}</span>}
+                      </span>
                     : <button onClick={() => requestDeliverySignature(s)}
                         style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, border: "1.3px solid #4caf50", background: "transparent", color: "#2e7d32", cursor: "pointer", fontFamily: "inherit" }}>
                         Marcar entregada

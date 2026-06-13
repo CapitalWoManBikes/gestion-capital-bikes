@@ -219,7 +219,9 @@ Notas de conexión:
 
 En cada tarjeta se puede actualizar:
 - **Pago:** Pendiente / Adelanto (con monto editable) / Pagado
-- **Entrega:** Marcar como entregada cuando el cliente recoge la bici
+- **Entrega:** Marcar como entregada cuando el cliente recoge la bici. Al confirmar, se guarda `deliveredAt` y la fecha queda visible en el link del cliente, historial del cliente y tarjetas del módulo Servicios.
+
+El link público de seguimiento del cliente usa un contenedor con scroll propio en móvil, independiente del panel interno de la app, para que se pueda deslizar completo desde celular.
 
 ---
 

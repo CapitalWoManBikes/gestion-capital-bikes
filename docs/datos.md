@@ -28,6 +28,9 @@ interface BikeService {
   paymentStatus?: "pendiente" | "pagado" | "adelanto";
   paymentAmount?: number;      // Monto del abono en COP (solo si paymentStatus="adelanto")
   deliveryStatus?: "en_taller" | "lista" | "entregada";
+  deliverySignatureName?: string; // Nombre/firma de quien recibe la bici
+  deliverySignedAt?: string;   // ISO timestamp de firma de entrega
+  deliveredAt?: string;        // ISO timestamp usado como fecha general de entrega
   neededByDate?: string;       // Fecha en que el cliente necesita la bici (YYYY-MM-DD)
   completedAt?: string;        // ISO timestamp cuando llegó a fase 4
   diagnosticUpdates?: DiagnosticUpdate[];  // Historial de diagnósticos técnicos
@@ -100,6 +103,9 @@ quotedParts?: QuotedPart[];
 // Trabajo final
 finalBilling?: ServiceBilling;
 scheduledDate?: string;         // Fecha programada para el trabajo (puede diferir de date)
+deliverySignatureName?: string; // Nombre/firma de quien recibe la bici
+deliverySignedAt?: string;      // Momento en que se firmó la entrega
+deliveredAt?: string;           // Fecha general de entrega mostrada en link cliente, historial y tarjetas
 ```
 
 ### `QuotedPart` — Repuesto cotizado (pre-inspección)
