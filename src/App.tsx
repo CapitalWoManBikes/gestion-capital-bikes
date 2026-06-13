@@ -1673,6 +1673,7 @@ function EditMemberModal({ person, extData = {}, onClose, onSave, isPinAvailable
   const [name, setName] = useState(person.name);
   const [role, setRole] = useState(person.role);
   const [salario, setSalario] = useState(extData.salario || "");
+  const [hourlyRate, setHourlyRate] = useState(extData.hourlyRate || extData.valorHora || "6000");
   const [direccion, setDireccion] = useState(extData.direccion || "");
   const [documento, setDocumento] = useState(extData.documento || "");
   const [eps, setEps] = useState(extData.eps || "");
@@ -1689,7 +1690,7 @@ function EditMemberModal({ person, extData = {}, onClose, onSave, isPinAvailable
       setPinError("Esa clave ya la usa otro colaborador. Elige una diferente.");
       return;
     }
-    onSave({ ...extData, name, role, salario, direccion, documento, eps, horasSemana, pin: employeePin, permissions, pinUpdatedAt: extData.pinUpdatedAt, pinChangeLog: extData.pinChangeLog || [] });
+    onSave({ ...extData, name, role, salario, hourlyRate, direccion, documento, eps, horasSemana, pin: employeePin, permissions, pinUpdatedAt: extData.pinUpdatedAt, pinChangeLog: extData.pinChangeLog || [] });
     onClose();
   };
   return (
@@ -1741,6 +1742,7 @@ function EditMemberModal({ person, extData = {}, onClose, onSave, isPinAvailable
               <Field label="DIRECCIÓN" value={direccion} onChange={setDireccion} placeholder="Calle, número, ciudad" />
               <Field label="EPS / SEGURO MÉDICO" value={eps} onChange={setEps} placeholder="Nombre de la EPS" />
               <Field label="REFERENCIA DE PAGO" value={salario} onChange={setSalario} placeholder="1.850" />
+              <Field label="VALOR HORA NÓMINA" value={hourlyRate} onChange={setHourlyRate} placeholder="6000" />
               <Field label="TIEMPO REFERENCIA SEMANAL" value={horasSemana} onChange={setHorasSemana} placeholder="40" />
               <hr className="sk-hr dashed" />
               <Field label="PIN DE ACCESO COLABORADOR (4 dígitos)" value={employeePin} onChange={setEmployeePin} placeholder="1234" />
@@ -2495,11 +2497,12 @@ function LunchSection({ lunchState, setLunchState, shiftState, team = INITIAL_TE
 
 }
 
-function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TEAM, attendanceRecords = [], lunchRecords = [], empLunch = {}, payrollConfirmations = [], onStartAttendance, onCloseAttendance, onCorrectAttendanceExit, onSaveAttendanceRecord, onSaveLunchRecord, onConfirmPayroll }: {
+function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TEAM, extendedData = {}, attendanceRecords = [], lunchRecords = [], empLunch = {}, payrollConfirmations = [], onStartAttendance, onCloseAttendance, onCorrectAttendanceExit, onSaveAttendanceRecord, onSaveLunchRecord, onConfirmPayroll, onUpdateHourlyRate = () => {} }: {
   shiftState: Record<string, boolean | string>;
   setShiftState: any;
   lunchState: boolean;
   team?: any[];
+  extendedData?: any;
   attendanceRecords?: AttendanceRecord[];
   lunchRecords?: LunchRecord[];
   empLunch?: Record<string, boolean>;
@@ -2510,11 +2513,11 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
   onSaveAttendanceRecord?: (record: AttendanceRecord) => void;
   onSaveLunchRecord?: (record: LunchRecord) => void;
   onConfirmPayroll?: (confirmation: PayrollConfirmation) => void;
+  onUpdateHourlyRate?: (memberId: string, value: string) => void;
 }) {
   const [, setTick] = useState(0);
   const [timesheetPersonId, setTimesheetPersonId] = useState(() => team[0]?.id || "");
   const [timesheetMonth, setTimesheetMonth] = useState(() => _fmtDate(new Date()).slice(0, 7));
-  const [hourlyRateInput, setHourlyRateInput] = useState("6000");
   const [editingDate, setEditingDate] = useState("");
   const [manualEntry, setManualEntry] = useState("08:00");
   const [manualExit, setManualExit] = useState("17:00");
@@ -2543,6 +2546,8 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
   const weeklyRecords = attendanceRecords.filter(r => r.date >= weekStart && r.date <= today);
   const selectedTimesheetPerson = team.find(p => p.id === timesheetPersonId) || team[0];
   const selectedPersonId = selectedTimesheetPerson?.id || "";
+  const selectedExtendedData = selectedPersonId ? (extendedData as any)[selectedPersonId] || {} : {};
+  const hourlyRateInput = String(selectedExtendedData.hourlyRate ?? selectedExtendedData.valorHora ?? "6000");
   const timesheetDates = monthDates(timesheetMonth);
   const timesheetWeeks = chunkWeeks(timesheetDates);
   const timesheetRecords = attendanceRecords.filter(r => r.employeeId === selectedPersonId && r.date.startsWith(timesheetMonth));
@@ -2710,7 +2715,17 @@ function ShiftSection({ shiftState, setShiftState, lunchState, team = INITIAL_TE
                   {team.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <input className="field-input" type="month" value={timesheetMonth} onChange={e => setTimesheetMonth(e.target.value)} style={{ width: 138, padding: "6px 10px" }} />
-                <input className="field-input" type="number" min={0} inputMode="numeric" value={hourlyRateInput} onChange={e => setHourlyRateInput(e.target.value)} style={{ width: 110, padding: "6px 10px" }} title="Valor referencia" />
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={hourlyRateInput}
+                  onChange={e => selectedPersonId && onUpdateHourlyRate(selectedPersonId, e.target.value)}
+                  style={{ width: 122, padding: "6px 10px" }}
+                  title={`Valor hora de ${selectedTimesheetPerson?.name || "colaborador"}`}
+                  placeholder="Valor hora"
+                />
               </div>
             </div>
             <div className="payroll-mobile-panel">
@@ -3202,6 +3217,7 @@ function ProfileSection({ team = INITIAL_TEAM, extendedData = {}, onEditMember }
                 ? <div className="list-row"><span className="muted">EPS</span><span className="sk-mono">{extendedData[person.id].eps}</span></div>
                 : <div className="list-row"><span className="muted">EPS</span><span className="sk-mono muted">—</span></div>}
               <div className="list-row"><span className="muted">referencia pago</span><span className="sk-mono">{extendedData[person.id]?.salario ? `€ ${extendedData[person.id].salario}` : "—"}</span></div>
+              <div className="list-row"><span className="muted">valor hora</span><span className="sk-mono">{extendedData[person.id]?.hourlyRate ? money(Number(extendedData[person.id].hourlyRate) || 0) : "—"}</span></div>
               <div className="list-row"><span className="muted">tiempo/ref</span><span className="sk-mono">{extendedData[person.id]?.horasSemana || "—"}h</span></div>
               <div className="list-row"><span className="muted">PIN acceso</span><span className="sk-mono">{extendedData[person.id]?.pin || "—"}</span></div>
               <div className="list-row"><span className="muted">último cambio</span><span className="sk-mono text-xs">{extendedData[person.id]?.pinUpdatedAt ? new Date(extendedData[person.id].pinUpdatedAt).toLocaleString("es-CO", { dateStyle: "short", timeStyle: "short" }) : "—"}</span></div>
@@ -8725,8 +8741,8 @@ function LoginScreen({ onLogin, loading = false }: { onLogin: (session: Session)
 
 const DEFAULT_PERMISSIONS = { canViewServices: true, canViewGeneralCalendar: false, canScheduleServices: true, canEditAppointments: true, canRegisterBikes: true, canModifyServices: true };
 const DEFAULT_EXT = {
-  s: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
-  c: { salario: "", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
+  s: { salario: "", hourlyRate: "6000", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
+  c: { salario: "", hourlyRate: "6000", direccion: "", documento: "", eps: "", horasSemana: "40", pin: "", permissions: { ...DEFAULT_PERMISSIONS } },
 };
 
 const DELETED_SERVICE_IDS_KEY = "cwb_deleted_service_ids";
@@ -8978,6 +8994,14 @@ export default function App() {
         return { ...d, [id]: { ...prevExt, ...data, pin: nextPin, permissions: data.permissions || DEFAULT_PERMISSIONS, pinUpdatedAt: pinChanged ? new Date().toISOString() : (data.pinUpdatedAt || prevExt.pinUpdatedAt), pinChangeLog } };
       });
       return updated;
+    });
+  };
+
+  const updateMemberHourlyRate = (id: string, value: string) => {
+    if (!id) return;
+    setExtendedData(d => {
+      const prevExt = (d as any)[id] || {};
+      return { ...d, [id]: { ...prevExt, hourlyRate: value } };
     });
   };
 
@@ -9625,7 +9649,7 @@ export default function App() {
               {section === "membresias" && <MembershipSection memberships={memberships} onAdd={addMembership} onUse={useMembership} onCancel={cancelMembership} />}
               {section === "dash" && <BusinessDashboard view={dashTab} services={services} tasks={tasks} appointments={appointments} memberships={memberships} team={team} shift={shift} empLunch={empLunch} attendanceRecords={attendanceRecords} />}
               {section === "lunch" && <LunchSection lunchState={lunch} setLunchState={setLunch} shiftState={shift} team={team} empLunch={empLunch} setEmpLunch={setEmpLunch} lunchRecords={lunchRecords} onStartLunch={startLunch} onEndLunch={endLunch} onCorrectLunchEnd={correctLunchEnd} />}
-              {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} attendanceRecords={attendanceRecords} lunchRecords={lunchRecords} empLunch={empLunch} payrollConfirmations={payrollConfirmations} onStartAttendance={startAttendance} onCloseAttendance={closeAttendance} onCorrectAttendanceExit={correctAttendanceExit} onSaveAttendanceRecord={saveAttendanceRecord} onSaveLunchRecord={saveLunchRecord} onConfirmPayroll={confirmPayroll} />}
+              {section === "turno" && <ShiftSection shiftState={shift} setShiftState={setShift} lunchState={lunch} team={team} extendedData={extendedData} attendanceRecords={attendanceRecords} lunchRecords={lunchRecords} empLunch={empLunch} payrollConfirmations={payrollConfirmations} onStartAttendance={startAttendance} onCloseAttendance={closeAttendance} onCorrectAttendanceExit={correctAttendanceExit} onSaveAttendanceRecord={saveAttendanceRecord} onSaveLunchRecord={saveLunchRecord} onConfirmPayroll={confirmPayroll} onUpdateHourlyRate={updateMemberHourlyRate} />}
               {section === "perfil" && <ProfileSection team={team} extendedData={extendedData} onEditMember={updateMemberData} />}
               {section === "tareas" && <TasksSection tasks={tasks} team={team} attendanceRecords={attendanceRecords} onToggle={toggleTask} onUpdate={updateTask} onAssign={() => setShowAssignTask(true)} />}
               {section === "mensajes" && <MessageAgentSection team={team} onAddTasks={newTasks => setTasks(ts => [...ts, ...newTasks])} />}

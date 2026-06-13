@@ -275,7 +275,7 @@ Cada colaborador puede registrar **inicio** y **cierre** de su día operativo. E
 - Confirmación Admin de cortes de pago
 
 El estado de inicio día se guarda en Firestore y se sincroniza entre dispositivos.
-El tiempo neto se recalcula desde inicio/cierre menos el almuerzo registrado. Ejemplo: 9:00 a 18:00 con 90 minutos de almuerzo queda en 7h 30m netos. Si Admin cambia un registro o almuerzo que ya estaba dentro de un corte confirmado, esa confirmación queda en estado `requiere_revision` hasta reconfirmarla.
+El tiempo neto se recalcula desde inicio/cierre menos el almuerzo registrado. Ejemplo: 9:00 a 18:00 con 90 minutos de almuerzo queda en 7h 30m netos. El valor hora se toma de cada colaborador (`extendedData[memberId].hourlyRate`), no de un valor global. Si Admin cambia un registro o almuerzo que ya estaba dentro de un corte confirmado, esa confirmación queda en estado `requiere_revision` hasta reconfirmarla.
 
 ---
 
@@ -303,6 +303,7 @@ Gestión de información de cada colaborador:
 | Nombre | Nombre completo |
 | Rol | Mecánico, Tienda/Caja, Administración, etc. |
 | Referencia de pago | Referencia interna |
+| Valor hora nómina | Valor por hora individual usado en los cortes |
 | Dirección | Domicilio |
 | Documento | Cédula |
 | EPS | Entidad de salud |

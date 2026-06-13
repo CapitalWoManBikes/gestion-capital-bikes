@@ -256,6 +256,7 @@ Documento: data
   "extendedData": {
     "[memberId]": {
       "salario": "string // referencia interna de pago",
+      "hourlyRate": "string // valor hora individual usado para cortes de nómina",
       "direccion": "string",
       "documento": "string",
       "eps": "string",
