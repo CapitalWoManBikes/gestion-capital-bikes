@@ -4559,6 +4559,53 @@ function TrackingLoader({ serviceId }: { serviceId: string }) {
   const [service, setService] = useState<BikeService | null>(null);
 
   useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById("root");
+    const previous = {
+      htmlOverflow: html.style.overflow,
+      htmlHeight: html.style.height,
+      bodyOverflow: body.style.overflow,
+      bodyPosition: body.style.position,
+      bodyInset: body.style.inset,
+      bodyHeight: body.style.height,
+      bodyWidth: body.style.width,
+      rootOverflow: root?.style.overflow || "",
+      rootHeight: root?.style.height || "",
+    };
+
+    html.classList.add("customer-tracking-open");
+    body.classList.add("customer-tracking-open");
+    html.style.overflow = "auto";
+    html.style.height = "auto";
+    body.style.overflow = "auto";
+    body.style.position = "static";
+    body.style.inset = "auto";
+    body.style.height = "auto";
+    body.style.width = "100%";
+    if (root) {
+      root.style.overflow = "visible";
+      root.style.height = "auto";
+    }
+
+    return () => {
+      html.classList.remove("customer-tracking-open");
+      body.classList.remove("customer-tracking-open");
+      html.style.overflow = previous.htmlOverflow;
+      html.style.height = previous.htmlHeight;
+      body.style.overflow = previous.bodyOverflow;
+      body.style.position = previous.bodyPosition;
+      body.style.inset = previous.bodyInset;
+      body.style.height = previous.bodyHeight;
+      body.style.width = previous.bodyWidth;
+      if (root) {
+        root.style.overflow = previous.rootOverflow;
+        root.style.height = previous.rootHeight;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     import("./firebase").then(({ loadShopDataOnce }) =>
       loadShopDataOnce().then(data => {
         if (!data) { setState("notfound"); return; }
@@ -4627,13 +4674,31 @@ function CustomerTrackingView({ data }: { data: any }) {
   return (
     <div
       className="customer-tracking-page"
-      style={{ minHeight: "100vh", height: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehaviorY: "contain", background: S.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px", boxSizing: "border-box" }}
+      style={{ minHeight: "100dvh", overflow: "visible", touchAction: "pan-y", background: S.bg, display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 16px", boxSizing: "border-box" }}
     >
       <style>{CSS}</style>
       <style>{`
-        .customer-tracking-page{height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;}
-        @supports not (height:100dvh){.customer-tracking-page{height:100vh;}}
-        @media (max-width:768px){.customer-tracking-page{padding:16px 12px 28px!important;}}
+        html.customer-tracking-open,
+        html.customer-tracking-open body,
+        body.customer-tracking-open,
+        body.customer-tracking-open #root{
+          height:auto!important;
+          min-height:100%!important;
+          overflow-x:hidden!important;
+          overflow-y:auto!important;
+          position:static!important;
+          inset:auto!important;
+          overscroll-behavior-y:auto!important;
+        }
+        body.customer-tracking-open .customer-tracking-page{
+          min-height:100dvh!important;
+          height:auto!important;
+          overflow:visible!important;
+          -webkit-overflow-scrolling:touch;
+          touch-action:pan-y!important;
+        }
+        @supports not (min-height:100dvh){body.customer-tracking-open .customer-tracking-page{min-height:100vh!important;}}
+        @media (max-width:768px){body.customer-tracking-open .customer-tracking-page{padding:16px 12px 28px!important;}}
       `}</style>
       <div style={{ width: "100%", maxWidth: 480, background: S.card, borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 32px #0008" }}>
 
