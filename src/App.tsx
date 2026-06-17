@@ -170,6 +170,7 @@ interface AppTask {
   evidence?: string;
   qualityStatus?: "pendiente" | "aprobado" | "correccion" | "no_aprobado";
   completedAt?: string;
+  updatedAt?: string;
 }
 interface AttendanceRecord {
   id: string;
@@ -8824,13 +8825,14 @@ export default function App() {
     let unsub: (() => void) | null = null;
     // Combina arrays remotos con items locales que aún no están en la nube
     // (recupera datos que solo llegaron a localStorage, ej. si hubo fallo de red)
+    // Merge básico: agrega items locales que no están en remoto (para arrays sin updatedAt)
     const mergeById = (local: any[], remote: any[]): any[] => {
       const remoteIds = new Set(remote.map((x: any) => x.id));
       const onlyLocal = local.filter((x: any) => !remoteIds.has(x.id));
       return onlyLocal.length ? [...remote, ...onlyLocal] : remote;
     };
-    // Merge para registros de asistencia: prefiere el más reciente por updatedAt
-    const mergeAttendanceById = (local: any[], remote: any[]): any[] => {
+    // Merge inteligente: prefiere el registro con updatedAt más reciente (para asistencia, almuerzo, etc.)
+    const mergeByTimestamp = (local: any[], remote: any[]): any[] => {
       const localById = new Map(local.map(x => [x.id, x]));
       const remoteById = new Map(remote.map(x => [x.id, x]));
       const allIds = new Set([...localById.keys(), ...remoteById.keys()]);
@@ -8902,42 +8904,68 @@ export default function App() {
           const remotePayrollConfirmations = Array.isArray((data as any).payrollConfirmations) ? (data as any).payrollConfirmations : [];
           const remoteAppointments = Array.isArray(data.appointments)  ? data.appointments  : [];
           const mergedServices     = mergeServicesById(services, remoteServices);
-          const mergedTasks        = mergeById(tasks,        remoteTasks);
-          const mergedAttendance   = mergeAttendanceById(attendanceRecords, remoteAttendance);
-          const mergedLunchRecords = mergeById(lunchRecords, remoteLunchRecords);
+          const mergedTasks        = mergeByTimestamp(tasks,   remoteTasks);
+          const mergedAttendance   = mergeByTimestamp(attendanceRecords, remoteAttendance);
+          const mergedLunchRecords = mergeByTimestamp(lunchRecords, remoteLunchRecords);
           const mergedPayrollConfirmations = mergeById(payrollConfirmations, remotePayrollConfirmations);
           const mergedAppointments = mergeById(appointments, remoteAppointments);
           const mergedMemberships  = mergeById(memberships,  Array.isArray((data as any).memberships)     ? (data as any).memberships : []);
           const mergedClients      = mergeById(clients,      Array.isArray((data as any).clients)          ? (data as any).clients     : []);
 
-          // Si hay items locales que faltaban o son más nuevos que en Firestore, subirlos ahora
-          const attendanceNeedsUpload = mergedAttendance.some((r: any) => {
-            const remote = remoteAttendance.find((x: any) => x.id === r.id);
-            if (!remote) return true;
-            const lTime = Date.parse(r.updatedAt || r.createdAt || "0");
-            const rTime = Date.parse(remote.updatedAt || remote.createdAt || "0");
-            return lTime > rTime;
+          // Derivar shift y empLunch desde registros (fuente de verdad) ANTES del upload
+          // Así el cierre manual nunca queda revertido por un sync con dato viejo
+          const derivedShift: Record<string, boolean | string> =
+            data.shift && typeof data.shift === "object" ? { ...(data.shift as Record<string, any>) } : {};
+          mergedAttendance.filter((r: any) => r.status === "abierto").forEach((r: any) => {
+            derivedShift[r.employeeId] = r.entryTime;
           });
+          Object.keys(derivedShift).forEach(id => {
+            if (derivedShift[id] && !mergedAttendance.some((r: any) => r.status === "abierto" && r.employeeId === id)) {
+              derivedShift[id] = false;
+            }
+          });
+          const derivedEmpLunch: Record<string, boolean> =
+            data.empLunch && typeof data.empLunch === "object" ? { ...(data.empLunch as Record<string, any>) } : {};
+          mergedLunchRecords.filter((r: any) => r.status === "abierto").forEach((r: any) => {
+            derivedEmpLunch[r.employeeId] = true;
+          });
+          Object.keys(derivedEmpLunch).forEach(id => {
+            if (derivedEmpLunch[id] && !mergedLunchRecords.some((r: any) => r.status === "abierto" && r.employeeId === id)) {
+              derivedEmpLunch[id] = false;
+            }
+          });
+
+          // Si hay items locales que faltaban o son más nuevos que en Firestore, subirlos ahora
+          const recordIsNewer = (merged: any[], remote: any[]) => merged.some((r: any) => {
+            const rem = remote.find((x: any) => x.id === r.id);
+            if (!rem) return true;
+            return Date.parse(r.updatedAt || r.createdAt || "0") > Date.parse(rem.updatedAt || rem.createdAt || "0");
+          });
+          const shiftDiffers = JSON.stringify(derivedShift) !== JSON.stringify(data.shift || {});
+          const empLunchDiffers = JSON.stringify(derivedEmpLunch) !== JSON.stringify(data.empLunch || {});
           const needsUpload =
             JSON.stringify(mergedServices) !== JSON.stringify(remoteServices) ||
-            mergedTasks.length        > remoteTasks.length ||
-            attendanceNeedsUpload ||
-            mergedLunchRecords.length > remoteLunchRecords.length ||
+            recordIsNewer(mergedTasks, remoteTasks) ||
+            recordIsNewer(mergedAttendance, remoteAttendance) ||
+            recordIsNewer(mergedLunchRecords, remoteLunchRecords) ||
             mergedPayrollConfirmations.length > remotePayrollConfirmations.length ||
             mergedAppointments.length > remoteAppointments.length ||
             mergedMemberships.length  > ((data as any).memberships?.length || 0) ||
-            mergedClients.length      > ((data as any).clients?.length || 0);
+            mergedClients.length      > ((data as any).clients?.length || 0) ||
+            shiftDiffers || empLunchDiffers;
 
           if (needsUpload) {
             saveShopData({
-              services:     mergedServices,
-              tasks:        mergedTasks,
+              services:          mergedServices,
+              tasks:             mergedTasks,
               attendanceRecords: mergedAttendance,
-              lunchRecords: mergedLunchRecords,
+              lunchRecords:      mergedLunchRecords,
               payrollConfirmations: mergedPayrollConfirmations,
-              appointments: mergedAppointments,
-              memberships:  mergedMemberships,
-              clients:      mergedClients as any[],
+              appointments:      mergedAppointments,
+              memberships:       mergedMemberships,
+              clients:           mergedClients as any[],
+              shift:             derivedShift,
+              empLunch:          derivedEmpLunch,
               deletedServiceIds,
               _lastClientId: MY_CLIENT_ID,
             }).catch(e => console.error("Firestore merge upload:", e));
@@ -8953,29 +8981,8 @@ export default function App() {
           setAppointments(mergedAppointments);
           setMemberships(mergedMemberships);
           setClients(mergedClients);
-          // Derivar turno desde registros de asistencia (fuente de verdad)
-          // Si hay un registro "abierto" → turno abierto. Si todos cerrados → turno cerrado.
-          // Así se evita que un sync de otro dispositivo revierta un cierre manual.
-          {
-            const membersWithOpenRecord = new Set(
-              mergedAttendance.filter((r: any) => r.status === "abierto").map((r: any) => r.employeeId)
-            );
-            setShift(prev => {
-              const next: Record<string, boolean | string> = data.shift && typeof data.shift === "object"
-                ? { ...(data.shift as Record<string, any>) }
-                : { ...prev };
-              // Registros abiertos sobreescriben cualquier valor remoto
-              mergedAttendance.filter((r: any) => r.status === "abierto").forEach((r: any) => {
-                next[r.employeeId] = r.entryTime;
-              });
-              // Miembros sin registro abierto quedan cerrados (no dejarlos como "abierto" si Firebase dice que sí)
-              Object.keys(next).forEach(id => {
-                if (next[id] && !membersWithOpenRecord.has(id)) next[id] = false;
-              });
-              return next;
-            });
-          }
-          if (data.empLunch && typeof data.empLunch === "object") setEmpLunch(data.empLunch);
+          setShift(derivedShift);
+          setEmpLunch(derivedEmpLunch);
           if (data.adminPassword) {
             localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
             setAdminPasswordState(data.adminPassword);
@@ -9234,13 +9241,13 @@ export default function App() {
       return updated;
     });
   };
-  const addTask         = (t: AppTask) => setTasks(prev => [t, ...prev]);
+  const addTask         = (t: AppTask) => setTasks(prev => [{ ...t, updatedAt: t.updatedAt || t.createdAt }, ...prev]);
   const toggleTask      = (id: string) => setTasks(prev => prev.map(t => {
     if (t.id !== id) return t;
     const nextDone = !t.done;
-    return { ...t, done: nextDone, completedAt: nextDone ? (t.completedAt || new Date().toISOString()) : undefined };
+    return { ...t, done: nextDone, completedAt: nextDone ? (t.completedAt || new Date().toISOString()) : undefined, updatedAt: new Date().toISOString() };
   }));
-  const updateTask      = (id: string, changes: Partial<AppTask>) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...changes } : t));
+  const updateTask      = (id: string, changes: Partial<AppTask>) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...changes, updatedAt: new Date().toISOString() } : t));
   const startAttendance = (member: any) => {
     const now = new Date();
     const date = _fmtDate(now);
