@@ -1489,7 +1489,7 @@ const CSS = `
     .p-4{padding:12px;}.p-5{padding:14px;}
     .notif-banner{padding:9px 12px;}
     .cal-day{min-width:210px;}
-    .calendar-week{overflow-x:auto!important;-webkit-overflow-scrolling:touch;background:var(--paper);}
+    .calendar-week{overflow:auto!important;-webkit-overflow-scrolling:touch;background:var(--paper);}
     .service-section{padding:12px!important;max-width:100%!important;}
     .modal-overlay{align-items:flex-start;justify-content:center;overflow-y:auto;padding:10px 10px calc(94px + env(safe-area-inset-bottom,0));}
     .modal-box{width:100%;max-width:520px;max-height:calc(100dvh - 24px);padding:18px;border-radius:14px;}
@@ -3585,7 +3585,7 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
   };
 
   return (
-    <div className="fade-in" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    <div className="fade-in" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {/* Barra de controles */}
       <div className="row between" style={{ padding: "10px 16px", borderBottom: "1.4px solid var(--line)", flexShrink: 0, gap: 12, flexWrap: "wrap" }}>
         <div className="row gap-2">
@@ -3644,7 +3644,7 @@ function CalendarSection({ tasks, appointments, services, setTasks, setAppointme
       </div>
 
       {/* Grid semana */}
-      <div className="calendar-week" style={{ display: "flex", flex: 1, overflow: "auto", borderBottom: "1.4px solid var(--line)" }}>
+      <div className="calendar-week" style={{ display: "flex", flex: 1, minHeight: 0, overflow: "auto", borderBottom: "1.4px solid var(--line)" }}>
         {days.map((day, i) => {
           const dateStr = _fmtDate(day);
           const isToday = dateStr === todayStr;
@@ -8285,7 +8285,7 @@ function EmployeeDashboard({ session, team, shift, setShift, tasks, onToggleTask
       )}
 
       {tab === "calendario" && (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <CalendarSection
             tasks={tasks} appointments={appointments} services={services}
             setTasks={setTasks ?? ((_fn: any) => {})}
