@@ -8829,6 +8829,23 @@ export default function App() {
       const onlyLocal = local.filter((x: any) => !remoteIds.has(x.id));
       return onlyLocal.length ? [...remote, ...onlyLocal] : remote;
     };
+    // Merge para registros de asistencia: prefiere el más reciente por updatedAt
+    const mergeAttendanceById = (local: any[], remote: any[]): any[] => {
+      const localById = new Map(local.map(x => [x.id, x]));
+      const remoteById = new Map(remote.map(x => [x.id, x]));
+      const allIds = new Set([...localById.keys(), ...remoteById.keys()]);
+      const result: any[] = [];
+      allIds.forEach(id => {
+        const l = localById.get(id);
+        const r = remoteById.get(id);
+        if (!r) { result.push(l); return; }
+        if (!l) { result.push(r); return; }
+        const lTime = Date.parse(l.updatedAt || l.createdAt || "0");
+        const rTime = Date.parse(r.updatedAt || r.createdAt || "0");
+        result.push(lTime > rTime ? l : r);
+      });
+      return result;
+    };
     const mergeServicesById = (local: BikeService[], remote: BikeService[]): BikeService[] => {
       const deletedIds = new Set(readDeletedServiceIds());
       const cleanLocal = local.filter(s => !deletedIds.has(s.id));
@@ -8886,18 +8903,25 @@ export default function App() {
           const remoteAppointments = Array.isArray(data.appointments)  ? data.appointments  : [];
           const mergedServices     = mergeServicesById(services, remoteServices);
           const mergedTasks        = mergeById(tasks,        remoteTasks);
-          const mergedAttendance   = mergeById(attendanceRecords, remoteAttendance);
+          const mergedAttendance   = mergeAttendanceById(attendanceRecords, remoteAttendance);
           const mergedLunchRecords = mergeById(lunchRecords, remoteLunchRecords);
           const mergedPayrollConfirmations = mergeById(payrollConfirmations, remotePayrollConfirmations);
           const mergedAppointments = mergeById(appointments, remoteAppointments);
           const mergedMemberships  = mergeById(memberships,  Array.isArray((data as any).memberships)     ? (data as any).memberships : []);
           const mergedClients      = mergeById(clients,      Array.isArray((data as any).clients)          ? (data as any).clients     : []);
 
-          // Si hay items locales que faltaban en Firestore, subirlos ahora
+          // Si hay items locales que faltaban o son más nuevos que en Firestore, subirlos ahora
+          const attendanceNeedsUpload = mergedAttendance.some((r: any) => {
+            const remote = remoteAttendance.find((x: any) => x.id === r.id);
+            if (!remote) return true;
+            const lTime = Date.parse(r.updatedAt || r.createdAt || "0");
+            const rTime = Date.parse(remote.updatedAt || remote.createdAt || "0");
+            return lTime > rTime;
+          });
           const needsUpload =
             JSON.stringify(mergedServices) !== JSON.stringify(remoteServices) ||
             mergedTasks.length        > remoteTasks.length ||
-            mergedAttendance.length   > remoteAttendance.length ||
+            attendanceNeedsUpload ||
             mergedLunchRecords.length > remoteLunchRecords.length ||
             mergedPayrollConfirmations.length > remotePayrollConfirmations.length ||
             mergedAppointments.length > remoteAppointments.length ||
@@ -8929,7 +8953,28 @@ export default function App() {
           setAppointments(mergedAppointments);
           setMemberships(mergedMemberships);
           setClients(mergedClients);
-          if (data.shift && typeof data.shift === "object") setShift(data.shift);
+          // Derivar turno desde registros de asistencia (fuente de verdad)
+          // Si hay un registro "abierto" → turno abierto. Si todos cerrados → turno cerrado.
+          // Así se evita que un sync de otro dispositivo revierta un cierre manual.
+          {
+            const membersWithOpenRecord = new Set(
+              mergedAttendance.filter((r: any) => r.status === "abierto").map((r: any) => r.employeeId)
+            );
+            setShift(prev => {
+              const next: Record<string, boolean | string> = data.shift && typeof data.shift === "object"
+                ? { ...(data.shift as Record<string, any>) }
+                : { ...prev };
+              // Registros abiertos sobreescriben cualquier valor remoto
+              mergedAttendance.filter((r: any) => r.status === "abierto").forEach((r: any) => {
+                next[r.employeeId] = r.entryTime;
+              });
+              // Miembros sin registro abierto quedan cerrados (no dejarlos como "abierto" si Firebase dice que sí)
+              Object.keys(next).forEach(id => {
+                if (next[id] && !membersWithOpenRecord.has(id)) next[id] = false;
+              });
+              return next;
+            });
+          }
           if (data.empLunch && typeof data.empLunch === "object") setEmpLunch(data.empLunch);
           if (data.adminPassword) {
             localStorage.setItem(STORED_PASSWORD_KEY, data.adminPassword);
