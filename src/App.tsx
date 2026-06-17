@@ -8887,10 +8887,12 @@ export default function App() {
           saveShopData({ adminPassword: getAdminPassword(), team, extendedData, services, tasks, attendanceRecords, lunchRecords, payrollConfirmations, shift, appointments, memberships, empLunch, deletedServiceIds: readDeletedServiceIds(), _lastClientId: MY_CLIENT_ID });
           const cache = team.map(m => ({ id: m.id, name: m.name, role: m.role, pin: (extendedData as any)[m.id]?.pin || "" }));
           localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
-        } else if ((data as any)._lastClientId !== MY_CLIENT_ID) {
-          // Cambio de otro dispositivo (o primera carga) — aplicar con merge
+        } else {
+          // Siempre aplicar datos de Firestore — propio o de otro dispositivo.
+          // Los merges inteligentes protegen cambios locales no guardados aún.
+          // pendingRemoteUpdate bloquea re-saves durante 600ms para evitar bucles.
           pendingRemoteUpdate.current = true;
-          window.setTimeout(() => { pendingRemoteUpdate.current = false; }, 400);
+          window.setTimeout(() => { pendingRemoteUpdate.current = false; }, 600);
 
           const remoteDeletedServiceIds = Array.isArray((data as any).deletedServiceIds) ? (data as any).deletedServiceIds : [];
           const deletedServiceIds = Array.from(new Set([...readDeletedServiceIds(), ...remoteDeletedServiceIds]));
@@ -8995,7 +8997,6 @@ export default function App() {
           const cache = (data.team || []).map((m: any) => ({ id: m.id, name: m.name, role: m.role, pin: extD[m.id]?.pin || "" }));
           localStorage.setItem("cwb_emp_cache", JSON.stringify(cache));
         }
-        // else: eco de nuestro propio write — ignorar
 
         if (!fbReady.current) {
           fbReady.current = true;
